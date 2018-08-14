@@ -18,11 +18,14 @@
 #include <gtest/gtest.h>
 #include "cryptography/crypto_provider/crypto_defaults.hpp"
 #include "framework/integration_framework/integration_test_framework.hpp"
+#include "framework/specified_visitor.hpp"
 #include "integration/acceptance/acceptance_fixture.hpp"
 
 using namespace std::string_literals;
 using namespace integration_framework;
 using namespace shared_model;
+
+using framework::SpecifiedVisitor;
 
 class MstPipelineTest : public AcceptanceFixture {
  public:
@@ -70,6 +73,12 @@ class MstPipelineTest : public AcceptanceFixture {
  * @then firstly there's no commit then it is
  */
 TEST_F(MstPipelineTest, OnePeerSendsTest) {
+  auto checkMstPendingTxStatus =
+      [](const shared_model::proto::TransactionResponse &resp) {
+        ASSERT_NO_THROW(boost::apply_visitor(
+            SpecifiedVisitor<interface::MstPendingResponse>(), resp.get()));
+      };
+
   auto tx =
       baseTx().setAccountQuorum(kUserId, kSignatories).quorum(kSignatories + 1);
   auto user_tx = makeMstUser();
@@ -78,10 +87,8 @@ TEST_F(MstPipelineTest, OnePeerSendsTest) {
       .setInitialState(kAdminKeypair)
       .sendTx(user_tx)
       .skipBlock()
-      .sendTx(signTx(tx, kUserKeypair))
-      // TODO(@l4l) 21/05/18 IR-1339
-      // tx should be checked for MST_AWAIT status
-      .sendTx(signTx(tx, signatories.at(0)))
+      .sendTx(signTx(tx, kUserKeypair), checkMstPendingTxStatus)
+      .sendTx(signTx(tx, signatories.at(0)), checkMstPendingTxStatus)
       .sendTx(signTx(tx, signatories.at(1)))
       .skipBlock();
 }

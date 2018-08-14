@@ -40,7 +40,8 @@ namespace shared_model {
                                                       StatefulValidTxResponse,
                                                       CommittedTxResponse,
                                                       MstExpiredResponse,
-                                                      NotReceivedTxResponse>;
+                                                      NotReceivedTxResponse,
+                                                      MstPendingResponse>;
 
       /// Type with list of types in ResponseVariantType
       using ProtoResponseListType = ProtoResponseVariantType::types;

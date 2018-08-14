@@ -47,6 +47,13 @@ namespace shared_model {
       return copy;
     }
 
+  TransactionStatusBuilder TransactionStatusBuilder::mstPending() {
+      TransactionStatusBuilder copy(*this);
+      copy.tx_response_.set_tx_status(
+          iroha::protocol::TxStatus::MST_PENDING);
+      return copy;
+    }
+
     TransactionStatusBuilder
     TransactionStatusBuilder::statefulValidationSuccess() {
       TransactionStatusBuilder copy(*this);

@@ -142,6 +142,11 @@ namespace iroha {
       if (boost::size(transaction->signatures()) < transaction->quorum()) {
         log_->info("waiting for quorum signatures");
         mst_processor_->propagateTransaction(transaction);
+        status_bus_->publish(
+            shared_model::builder::DefaultTransactionStatusBuilder()
+                .mstPending()
+                .txHash(transaction->hash())
+                .build());
         return;
       }
 

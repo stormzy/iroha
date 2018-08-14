@@ -49,6 +49,12 @@ namespace shared_model {
         return copy;
       }
 
+      TransactionStatusBuilder mstPending() {
+        TransactionStatusBuilder copy(*this);
+        copy.builder_ = this->builder_.mstPending();
+        return copy;
+      }
+
       TransactionStatusBuilder statefulValidationSuccess() {
         TransactionStatusBuilder copy(*this);
         copy.builder_ = this->builder_.statefulValidationSuccess();
