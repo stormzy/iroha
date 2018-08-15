@@ -9,9 +9,25 @@
 #include <boost/range/irange.hpp>
 
 #include "framework/result_fixture.hpp"
+#include "interfaces/iroha_internal/transaction_batch_template_definitions.hpp"
 #include "interfaces/iroha_internal/transaction_batch.hpp"
 #include "module/shared_model/builders/protobuf/test_transaction_builder.hpp"
+#include "module/shared_model/validators/validators.hpp"
 #include "validators/transactions_collection/batch_order_validator.hpp"
+
+namespace shared_model {
+  namespace interface {
+
+    // with this, it is possible to create batch from a single transaction
+    // without any tx validation in tests
+    template iroha::expected::Result<TransactionBatch, std::string>
+    TransactionBatch::createTransactionBatch(
+        std::shared_ptr<Transaction> transaction,
+        const validation::AlwaysValidValidator &transaction_validator,
+        const validation::FieldValidator &field_validator);
+
+  }  // namespace interface
+}  // namespace shared_model
 
 namespace framework {
   namespace batch {

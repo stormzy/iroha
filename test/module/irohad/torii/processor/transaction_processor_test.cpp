@@ -4,12 +4,14 @@
  */
 
 #include <boost/range/join.hpp>
+
 #include "builders/protobuf/common_objects/proto_signature_builder.hpp"
 #include "builders/protobuf/proposal.hpp"
 #include "builders/protobuf/transaction.hpp"
 #include "framework/batch_helper.hpp"
 #include "framework/specified_visitor.hpp"
 #include "framework/test_subscriber.hpp"
+#include "interfaces/iroha_internal/transaction_batch.hpp"
 #include "interfaces/iroha_internal/transaction_sequence.hpp"
 #include "module/irohad/multi_sig_transactions/mst_mocks.hpp"
 #include "module/irohad/network/network_mocks.hpp"
@@ -19,7 +21,6 @@
 #include "module/shared_model/builders/protobuf/test_transaction_builder.hpp"
 #include "torii/impl/status_bus_impl.hpp"
 #include "torii/processor/transaction_processor_impl.hpp"
-#include "validators/default_validator.hpp"
 
 using namespace iroha;
 using namespace iroha::network;
@@ -86,8 +87,10 @@ class TransactionProcessorTest : public ::testing::Test {
 
   TransactionBatch createSingleTxBatch(
       std::shared_ptr<shared_model::interface::Transaction> tx) {
-    return framework::expected::val(TransactionBatch::createTransactionBatch(
-        tx, shared_model::validation::DefaultUnsignedTransactionsValidator()));
+    return framework::expected::val(
+               TransactionBatch::createTransactionBatch(
+                   tx, shared_model::validation::AlwaysValidValidator()))
+        ->value;
   }
 
   rxcpp::subjects::subject<iroha::DataType> mst_prepared_notifier;
@@ -135,7 +138,7 @@ TEST_F(TransactionProcessorTest, TransactionProcessorOnProposalTest) {
       }));
 
   EXPECT_CALL(*mp, propagateTransactionImpl(_)).Times(0);
-  EXPECT_CALL(*pcs, propagate_transaction(_)).Times(txs.size());
+  EXPECT_CALL(*pcs, propagate_batch(_)).Times(txs.size());
 
   for (const auto &tx : txs) {
     tp->batchHandle(createSingleTxBatch(
@@ -230,7 +233,7 @@ TEST_F(TransactionProcessorTest, TransactionProcessorBlockCreatedTest) {
       }));
 
   EXPECT_CALL(*mp, propagateTransactionImpl(_)).Times(0);
-  EXPECT_CALL(*pcs, propagate_transaction(_)).Times(txs.size());
+  EXPECT_CALL(*pcs, propagate_batch(_)).Times(txs.size());
 
   for (const auto &tx : txs) {
     tp->batchHandle(createSingleTxBatch(
@@ -289,11 +292,11 @@ TEST_F(TransactionProcessorTest, TransactionProcessorOnCommitTest) {
       }));
 
   EXPECT_CALL(*mp, propagateTransactionImpl(_)).Times(0);
-  EXPECT_CALL(*pcs, propagate_transaction(_)).Times(txs.size());
+  EXPECT_CALL(*pcs, propagate_batch(_)).Times(txs.size());
 
   for (const auto &tx : txs) {
     tp->batchHandle(createSingleTxBatch(
-        std::shared_ptr<shared_model::interface::Transaction>(clone(tx)));
+        std::shared_ptr<shared_model::interface::Transaction>(clone(tx))));
   }
 
   // 1. Create proposal and notify transaction processor about it
