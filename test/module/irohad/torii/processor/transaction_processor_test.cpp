@@ -433,7 +433,8 @@ TEST_F(TransactionProcessorTest, MultisigTransaction) {
 /**
  * @given valid multisig tx
  * @when transaction_processor handle it
- * @then ensure after expiring it leads to MST_EXPIRED status
+ * @then before expiring it will have MST_PENDING status @and after expiring
+ * MST_EXPIRED status
  */
 TEST_F(TransactionProcessorTest, MultisigExpired) {
   EXPECT_CALL(*mp, propagateTransactionImpl(_)).Times(1);
@@ -448,6 +449,12 @@ TEST_F(TransactionProcessorTest, MultisigExpired) {
                         generateKeypair())
                 .finish());
   EXPECT_CALL(*status_bus, publish(_))
+      .WillOnce(testing::Invoke([](auto response) {
+        ASSERT_NO_THROW(boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::MstPendingResponse>(),
+            response->get()));
+      }))
       .WillOnce(testing::Invoke([](auto response) {
         ASSERT_NO_THROW(boost::apply_visitor(
             framework::SpecifiedVisitor<
