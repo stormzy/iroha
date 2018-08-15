@@ -7,7 +7,6 @@
 
 #include <boost/format.hpp>
 
-#include "backend/protobuf/transaction.hpp"
 #include "interfaces/iroha_internal/block.hpp"
 #include "interfaces/iroha_internal/proposal.hpp"
 #include "interfaces/iroha_internal/transaction_sequence.hpp"
@@ -133,34 +132,6 @@ namespace iroha {
                 .build());
         ;
       });
-    }
-
-    void TransactionProcessorImpl::transactionHandle(
-        std::shared_ptr<shared_model::interface::Transaction> transaction)
-        const {
-      log_->info("handle transaction");
-      if (boost::size(transaction->signatures()) < transaction->quorum()) {
-        log_->info("waiting for quorum signatures");
-        mst_processor_->propagateTransaction(transaction);
-        return;
-      }
-
-      log_->info("propagating tx");
-      pcs_->propagate_transaction(transaction);
-    }
-
-    void TransactionProcessorImpl::batchHandle(
-        const shared_model::interface::TransactionBatch &transaction_batch)
-        const {
-      if (transaction_batch.hasAllSignatures()) {
-        pcs_->propagate_batch(transaction_batch);
-      } else {
-        // TODO kamilsa 16.07.18 propagate full batch to mst when its
-        // interface is updated
-        for (const auto tx : transaction_batch.transactions()) {
-          mst_processor_->propagateTransaction(tx);
-        }
-      }
     }
 
   }  // namespace torii

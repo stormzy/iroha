@@ -48,6 +48,13 @@ namespace torii {
     CommandService &operator=(const CommandService &) = delete;
 
     /**
+     * Forward batch to transaction processor and set statuses of all
+     * transactions inside it
+     * @param batch to be processed
+     */
+    void processBatch(const shared_model::interface::TransactionBatch &batch);
+
+    /**
      * Actual implementation of sync Torii in CommandService
      * @param tx - Transaction we've received
      */

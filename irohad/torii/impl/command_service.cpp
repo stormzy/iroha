@@ -75,6 +75,26 @@ namespace torii {
     }
   }  // namespace
 
+  void CommandService::processBatch(
+      const shared_model::interface::TransactionBatch &batch) {
+    tx_processor_->batchHandle(batch);
+    const auto &txs = batch.transactions();
+    std::for_each(txs.begin(), txs.end(), [this](const auto &tx) {
+      auto tx_hash = tx->hash();
+      if (cache_->findItem(tx_hash) and tx->quorum() < 2) {
+        log_->warn("Found transaction {} in cache, ignoring", tx_hash.hex());
+        return;
+      }
+
+      this->pushStatus(
+          "ToriiList",
+          std::move(tx_hash),
+          makeResponse(
+              tx_hash,
+              iroha::protocol::TxStatus::STATELESS_VALIDATION_SUCCESS));
+    });
+  }
+
   void CommandService::Torii(const iroha::protocol::Transaction &request) {
     shared_model::proto::TransportBuilder<
         shared_model::proto::Transaction,
@@ -85,24 +105,21 @@ namespace torii {
                 // success case
                 iroha::expected::Value<shared_model::proto::Transaction>
                     &iroha_tx) {
-              auto tx_hash = iroha_tx.value.hash();
-              if (cache_->findItem(tx_hash) and iroha_tx.value.quorum() < 2) {
-                log_->warn("Found transaction {} in cache, ignoring",
-                           tx_hash.hex());
-                return;
-              }
-
-              // Send transaction to iroha
-              tx_processor_->transactionHandle(
+              shared_model::interface::TransactionBatch::createTransactionBatch(
                   std::make_shared<shared_model::proto::Transaction>(
-                      std::move(iroha_tx.value)));
-
-              this->pushStatus(
-                  "Torii",
-                  std::move(tx_hash),
-                  makeResponse(
-                      tx_hash,
-                      iroha::protocol::TxStatus::STATELESS_VALIDATION_SUCCESS));
+                      std::move(iroha_tx.value)),
+                  shared_model::validation::DefaultSignedTransactionValidator())
+                  .match([this](iroha::expected::Value<
+                                shared_model::interface::TransactionBatch>
+                                    &batch) { processBatch(batch.value); },
+                         [this, &iroha_tx](
+                             const iroha::expected::Error<std::string> &error) {
+                           log_->warn(
+                               "Could not create batch out of transaction with "
+                               "hash {}: {}",
+                               iroha_tx.value.hash().hex(),
+                               error.error);
+                         });
             },
             [this, &request](const auto &error) {
               // getting hash from invalid transaction
@@ -137,24 +154,9 @@ namespace torii {
                 iroha::expected::Value<
                     shared_model::interface::TransactionSequence>
                     &tx_sequence) {
-              for (const auto &batch : tx_sequence.value.batches()) {
-                tx_processor_->batchHandle(batch);
-                const auto &txs = batch.transactions();
-                std::for_each(txs.begin(), txs.end(), [this](const auto &tx) {
-                  auto tx_hash = tx->hash();
-                  if (cache_->findItem(tx_hash) and tx->quorum() < 2) {
-                    log_->warn("Found transaction {} in cache, ignoring",
-                               tx_hash.hex());
-                    return;
-                  }
-
-                  this->pushStatus(
-                      "ToriiList",
-                      std::move(tx_hash),
-                      makeResponse(tx_hash,
-                                   iroha::protocol::TxStatus::
-                                       STATELESS_VALIDATION_SUCCESS));
-                });
+              const auto &batches = tx_sequence.value.batches();
+              for (size_t i = 0; i < batches.size(); ++i) {
+                processBatch(batches[i]);
               }
             },
             [this, &tx_list](auto &error) {

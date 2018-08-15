@@ -19,6 +19,7 @@
 #include "module/shared_model/builders/protobuf/test_transaction_builder.hpp"
 #include "torii/impl/status_bus_impl.hpp"
 #include "torii/processor/transaction_processor_impl.hpp"
+#include "validators/default_validator.hpp"
 
 using namespace iroha;
 using namespace iroha::network;
@@ -28,6 +29,8 @@ using namespace framework::test_subscriber;
 using ::testing::_;
 using ::testing::A;
 using ::testing::Return;
+
+using shared_model::interface::TransactionBatch;
 
 class TransactionProcessorTest : public ::testing::Test {
  public:
@@ -81,6 +84,12 @@ class TransactionProcessorTest : public ::testing::Test {
     }
   }
 
+  TransactionBatch createSingleTxBatch(
+      std::shared_ptr<shared_model::interface::Transaction> tx) {
+    return framework::expected::val(TransactionBatch::createTransactionBatch(
+        tx, shared_model::validation::DefaultUnsignedTransactionsValidator()));
+  }
+
   rxcpp::subjects::subject<iroha::DataType> mst_prepared_notifier;
   rxcpp::subjects::subject<iroha::DataType> mst_expired_notifier;
 
@@ -129,8 +138,8 @@ TEST_F(TransactionProcessorTest, TransactionProcessorOnProposalTest) {
   EXPECT_CALL(*pcs, propagate_transaction(_)).Times(txs.size());
 
   for (const auto &tx : txs) {
-    tp->transactionHandle(
-        std::shared_ptr<shared_model::interface::Transaction>(clone(tx)));
+    tp->batchHandle(createSingleTxBatch(
+        std::shared_ptr<shared_model::interface::Transaction>(clone(tx))));
   }
 
   // create proposal and notify about it
@@ -224,8 +233,8 @@ TEST_F(TransactionProcessorTest, TransactionProcessorBlockCreatedTest) {
   EXPECT_CALL(*pcs, propagate_transaction(_)).Times(txs.size());
 
   for (const auto &tx : txs) {
-    tp->transactionHandle(
-        std::shared_ptr<shared_model::interface::Transaction>(clone(tx)));
+    tp->batchHandle(createSingleTxBatch(
+        std::shared_ptr<shared_model::interface::Transaction>(clone(tx))));
   }
 
   // 1. Create proposal and notify transaction processor about it
@@ -283,7 +292,7 @@ TEST_F(TransactionProcessorTest, TransactionProcessorOnCommitTest) {
   EXPECT_CALL(*pcs, propagate_transaction(_)).Times(txs.size());
 
   for (const auto &tx : txs) {
-    tp->transactionHandle(
+    tp->batchHandle(createSingleTxBatch(
         std::shared_ptr<shared_model::interface::Transaction>(clone(tx)));
   }
 
@@ -426,7 +435,7 @@ TEST_F(TransactionProcessorTest, MultisigTransaction) {
                         generateKeypair())
                 .finish());
 
-  tp->transactionHandle(tx);
+  tp->batchHandle(createSingleTxBatch(tx));
   mst_prepared_notifier.get_subscriber().on_next(after_mst);
 }
 
@@ -454,6 +463,6 @@ TEST_F(TransactionProcessorTest, MultisigExpired) {
                 shared_model::interface::MstExpiredResponse>(),
             response->get()));
       }));
-  tp->transactionHandle(tx);
+  tp->batchHandle(createSingleTxBatch(tx));
   mst_expired_notifier.get_subscriber().on_next(tx);
 }
