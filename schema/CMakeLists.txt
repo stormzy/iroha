@@ -36,6 +36,8 @@ target_link_libraries(ordering_grpc
     grpc++
     )
 
+target_include_directories(ordering_grpc INTERFACE ${SCHEMA_OUT_DIR})
+
 add_library(loader_grpc
     loader.pb.cc
     loader.grpc.pb.cc

@@ -97,4 +97,6 @@ endif()
 ###################################
 find_package(ed25519)
 
-find_package(libiroha)
+if (USE_LIBIROHA)
+  find_package(libiroha)
+endif()
