@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "ordering/impl/ordering_service_impl.hpp"
+#include "ordering/impl/single_peer_ordering_service.hpp"
 
 #include <algorithm>
 #include <iterator>
@@ -17,7 +17,7 @@
 
 namespace iroha {
   namespace ordering {
-    OrderingServiceImpl::OrderingServiceImpl(
+    SinglePeerOrderingService::SinglePeerOrderingService(
         std::shared_ptr<ametsuchi::PeerQuery> wsv,
         size_t max_size,
         rxcpp::observable<TimeoutType> proposal_timeout,
@@ -68,7 +68,7 @@ namespace iroha {
       }
     }
 
-    void OrderingServiceImpl::onBatch(
+    void SinglePeerOrderingService::onBatch(
         shared_model::interface::TransactionBatch &&batch) {
       std::shared_lock<std::shared_timed_mutex> batch_prop_lock(
           batch_prop_mutex_);
@@ -84,7 +84,7 @@ namespace iroha {
       transactions_.get_subscriber().on_next(ProposalEvent::kBatchEvent);
     }
 
-    void OrderingServiceImpl::generateProposal() {
+    void SinglePeerOrderingService::generateProposal() {
       std::lock_guard<std::shared_timed_mutex> lock(batch_prop_mutex_);
       log_->info("Start proposal generation");
       std::vector<std::shared_ptr<shared_model::interface::Transaction>> txs;
@@ -92,8 +92,8 @@ namespace iroha {
            txs.size() < max_size_ and queue_.try_pop(batch);) {
         auto batch_size = batch->transactions().size();
         txs.insert(std::end(txs),
-            std::make_move_iterator(std::begin(batch->transactions())),
-            std::make_move_iterator(std::end(batch->transactions())));
+                   std::make_move_iterator(std::begin(batch->transactions())),
+                   std::make_move_iterator(std::end(batch->transactions())));
         current_size_ -= batch_size;
       }
 
@@ -120,7 +120,7 @@ namespace iroha {
           });
     }
 
-    void OrderingServiceImpl::publishProposal(
+    void SinglePeerOrderingService::publishProposal(
         std::unique_ptr<shared_model::interface::Proposal> proposal) {
       auto peers = wsv_->getLedgerPeers();
       if (peers) {
@@ -135,7 +135,7 @@ namespace iroha {
       }
     }
 
-    OrderingServiceImpl::~OrderingServiceImpl() {
+    SinglePeerOrderingService::~SinglePeerOrderingService() {
       handle_.unsubscribe();
     }
   }  // namespace ordering

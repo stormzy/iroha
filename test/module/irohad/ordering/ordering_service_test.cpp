@@ -15,8 +15,8 @@
 #include "module/irohad/network/network_mocks.hpp"
 #include "module/irohad/ordering/mock_ordering_service_persistent_state.hpp"
 #include "module/shared_model/builders/protobuf/test_proposal_builder.hpp"
-#include "ordering/impl/ordering_service_impl.hpp"
 #include "ordering/impl/ordering_service_transport_grpc.hpp"
+#include "ordering/impl/single_peer_ordering_service.hpp"
 
 using namespace iroha;
 using namespace iroha::ordering;
@@ -71,7 +71,7 @@ class OrderingServiceTest : public ::testing::Test {
   }
 
   auto initOs(size_t max_proposal) {
-    return std::make_shared<OrderingServiceImpl>(
+    return std::make_shared<SinglePeerOrderingService>(
         wsv,
         max_proposal,
         proposal_timeout.get_observable(),
@@ -93,7 +93,8 @@ class OrderingServiceTest : public ::testing::Test {
   std::shared_ptr<shared_model::interface::Peer> peer;
   std::shared_ptr<MockPeerQuery> wsv;
   std::unique_ptr<shared_model::interface::ProposalFactory> factory;
-  rxcpp::subjects::subject<OrderingServiceImpl::TimeoutType> proposal_timeout;
+  rxcpp::subjects::subject<SinglePeerOrderingService::TimeoutType>
+      proposal_timeout;
 };
 
 /**
@@ -269,7 +270,7 @@ TEST_F(OrderingServiceTest, GenerateProposalDestructor) {
 
   {
     EXPECT_CALL(*fake_transport, publishProposalProxy(_, _)).Times(AtLeast(1));
-    OrderingServiceImpl ordering_service(
+    SinglePeerOrderingService ordering_service(
         wsv,
         max_proposal,
         rxcpp::observable<>::interval(commit_delay,

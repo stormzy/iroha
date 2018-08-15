@@ -14,7 +14,7 @@
 
 add_library(ordering_service
     impl/ordering_gate_impl.cpp
-    impl/ordering_service_impl.cpp
+    impl/single_peer_ordering_service.cpp
     impl/ordering_gate_transport_grpc.cpp
     impl/ordering_service_transport_grpc.cpp
     )
@@ -27,4 +27,16 @@ target_link_libraries(ordering_service
     shared_model_proto_backend
     ordering_grpc
     logger
+    )
+
+add_library(on_demand_ordering_service
+    impl/on_demand_ordering_service_impl.cpp
+    )
+
+target_link_libraries(on_demand_ordering_service
+    tbb
+    shared_model_interfaces
+    shared_model_proto_backend
+    logger
+    # transport is missing
     )

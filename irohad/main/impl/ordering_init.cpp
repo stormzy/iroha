@@ -42,7 +42,7 @@ namespace iroha {
             persistent_state) {
       auto factory = std::make_unique<shared_model::proto::ProtoProposalFactory<
           shared_model::validation::DefaultProposalValidator>>();
-      return std::make_shared<ordering::OrderingServiceImpl>(
+      return std::make_shared<ordering::SinglePeerOrderingService>(
           wsv,
           max_size,
           rxcpp::observable<>::interval(delay_milliseconds,
@@ -52,7 +52,8 @@ namespace iroha {
           std::move(factory));
     }
 
-    std::shared_ptr<OrderingGate> OrderingInit::initOrderingGate(
+    std::shared_ptr<iroha::network::OrderingGate>
+    OrderingInit::initOrderingGate(
         std::shared_ptr<ametsuchi::PeerQuery> wsv,
         size_t max_size,
         std::chrono::milliseconds delay_milliseconds,
