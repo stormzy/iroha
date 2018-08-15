@@ -96,3 +96,5 @@ endif()
 #          ed25519/sha3           #
 ###################################
 find_package(ed25519)
+
+find_package(libiroha)

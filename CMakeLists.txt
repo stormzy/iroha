@@ -108,7 +108,7 @@ set(SM_SCHEMA_DIR "${PROJECT_SOURCE_DIR}/shared_model/schema")
 set(SCHEMA_OUT_DIR ${CMAKE_BINARY_DIR}/schema)
 include_directories(
   ${PROJECT_SOURCE_DIR}/irohad
-  ${PROJECT_SOURCE_DIR}/shared_model
+#  ${PROJECT_SOURCE_DIR}/shared_model
   ${PROJECT_SOURCE_DIR}/libs
 )
 

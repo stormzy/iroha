@@ -23,8 +23,9 @@ add_library(ordering_service
 target_link_libraries(ordering_service
     rxcpp
     tbb
-    shared_model_interfaces
-    shared_model_proto_backend
+#    shared_model_interfaces
+#    shared_model_proto_backend
+    libiroha
     ordering_grpc
     logger
     )
