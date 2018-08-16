@@ -107,7 +107,7 @@ namespace shared_model {
       }
       return iroha::expected::makeValue(
           TransactionBatch(types::SharedTxsCollectionType{transaction}));
-    };
+    }
 
   }  // namespace interface
 }  // namespace shared_model
