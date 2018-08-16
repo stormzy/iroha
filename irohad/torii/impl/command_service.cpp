@@ -87,7 +87,7 @@ namespace torii {
       }
 
       this->pushStatus(
-          "ToriiList",
+          "ToriiBatchProcessor",
           std::move(tx_hash),
           makeResponse(
               tx_hash,
