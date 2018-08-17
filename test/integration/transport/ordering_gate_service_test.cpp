@@ -17,6 +17,7 @@
 
 #include <gtest/gtest.h>
 
+#include "backend/protobuf/proto_proposal_factory.hpp"
 #include "builders/protobuf/common_objects/proto_peer_builder.hpp"
 #include "builders/protobuf/transaction.hpp"
 #include "framework/test_subscriber.hpp"
@@ -44,11 +45,16 @@ using wPeer = std::shared_ptr<shared_model::interface::Peer>;
 class OrderingGateServiceTest : public ::testing::Test {
  public:
   OrderingGateServiceTest() {
+    factory_ = std::make_unique<shared_model::proto::ProtoProposalFactory<
+        shared_model::validation::DefaultProposalValidator>>();
     pcs_ = std::make_shared<MockPeerCommunicationService>();
     EXPECT_CALL(*pcs_, on_commit())
         .WillRepeatedly(Return(commit_subject_.get_observable()));
 
-    service_transport = std::make_shared<OrderingServiceTransportGrpc>();
+    async_call_ =
+        std::make_shared<network::AsyncGrpcClient<google::protobuf::Empty>>();
+    service_transport =
+        std::make_shared<OrderingServiceTransportGrpc>(async_call_);
 
     wsv = std::make_shared<MockPeerQuery>();
   }
@@ -64,12 +70,14 @@ class OrderingGateServiceTest : public ::testing::Test {
                                               max_proposal,
                                               proposal_timeout.get_observable(),
                                               service_transport,
-                                              fake_persistent_state);
+                                              fake_persistent_state,
+                                              std::move(factory_));
     service_transport->subscribe(service);
   }
 
   void initGate(std::string address) {
-    gate_transport = std::make_shared<OrderingGateTransportGrpc>(address);
+    gate_transport =
+        std::make_shared<OrderingGateTransportGrpc>(address, async_call_);
     gate = std::make_shared<OrderingGateImpl>(gate_transport, 1, false);
     gate->setPcs(*pcs_);
     gate_transport->subscribe(gate);
@@ -175,6 +183,8 @@ class OrderingGateServiceTest : public ::testing::Test {
  private:
   std::shared_ptr<OrderingGateImpl> gate;
   std::shared_ptr<OrderingServiceImpl> service;
+  std::shared_ptr<network::AsyncGrpcClient<google::protobuf::Empty>>
+      async_call_;
 
   /// Peer Communication Service and commit subject are required to emulate
   /// commits for Ordering Service
@@ -189,6 +199,8 @@ class OrderingGateServiceTest : public ::testing::Test {
 
   std::shared_ptr<OrderingGateTransportGrpc> gate_transport;
   std::shared_ptr<OrderingServiceTransportGrpc> service_transport;
+
+  std::unique_ptr<shared_model::interface::ProposalFactory> factory_;
 
   const std::string kAddress = "127.0.0.1";
 };

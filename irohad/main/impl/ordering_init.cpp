@@ -40,13 +40,16 @@ namespace iroha {
         std::shared_ptr<network::OrderingServiceTransport> transport,
         std::shared_ptr<ametsuchi::OrderingServicePersistentState>
             persistent_state) {
+      auto factory = std::make_unique<shared_model::proto::ProtoProposalFactory<
+          shared_model::validation::DefaultProposalValidator>>();
       return std::make_shared<ordering::OrderingServiceImpl>(
           wsv,
           max_size,
           rxcpp::observable<>::interval(delay_milliseconds,
                                         rxcpp::observe_on_new_thread()),
           transport,
-          persistent_state);
+          persistent_state,
+          std::move(factory));
     }
 
     std::shared_ptr<OrderingGate> OrderingInit::initOrderingGate(
@@ -55,7 +58,9 @@ namespace iroha {
         std::chrono::milliseconds delay_milliseconds,
         std::shared_ptr<ametsuchi::OrderingServicePersistentState>
             persistent_state,
-        std::shared_ptr<ametsuchi::BlockQuery> block_query) {
+        std::shared_ptr<ametsuchi::BlockQuery> block_query,
+        std::shared_ptr<network::AsyncGrpcClient<google::protobuf::Empty>>
+            async_call) {
       auto ledger_peers = wsv->getLedgerPeers();
       if (not ledger_peers or ledger_peers.value().empty()) {
         log_->error(
@@ -65,10 +70,11 @@ namespace iroha {
       log_->info("Ordering gate is at {}", network_address);
       ordering_gate_transport =
           std::make_shared<iroha::ordering::OrderingGateTransportGrpc>(
-              network_address);
+              network_address, async_call);
 
       ordering_service_transport =
-          std::make_shared<ordering::OrderingServiceTransportGrpc>();
+          std::make_shared<ordering::OrderingServiceTransportGrpc>(
+              std::move(async_call));
       ordering_service = createService(wsv,
                                        max_size,
                                        delay_milliseconds,

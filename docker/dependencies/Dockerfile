@@ -30,7 +30,7 @@ RUN set -e; \
         # SWIG dependencies
         libpcre3-dev autoconf bison  \
         # other
-        wget curl file gdb ccache \
+        wget curl file gdb gdbserver ccache \
         gcovr cppcheck doxygen graphviz graphviz-dev unzip zip; \
     apt-get -y clean
 
@@ -234,7 +234,7 @@ RUN set -e; \
 # install ed25519
 RUN set -e; \
     git clone git://github.com/hyperledger/iroha-ed25519.git /tmp/ed25519; \
-    (cd /tmp/ed25519 ; git checkout e7188b8393dbe5ac54378610d53630bd4a180038); \
+    (cd /tmp/ed25519 ; git checkout f42953c631fae93011612f6b1ee33f1f88c3f8af); \
     cmake \
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
         -DTESTING=OFF \

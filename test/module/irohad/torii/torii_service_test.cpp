@@ -35,6 +35,16 @@ using namespace std::chrono_literals;
 constexpr std::chrono::milliseconds initial_timeout = 1s;
 constexpr std::chrono::milliseconds nonfinal_timeout = 2 * 10s;
 
+/**
+The do-while cycle imitates client resubscription to the stream. Stream
+"expiration" is a valid designed case (see pr #1615 for the details).
+
+The number of attempts (3) is a magic constant here. The idea behind this number
+is the following: only one resubscription is usually enough to pass the test; if
+three resubscribes were not enough, then most likely there is another bug.
+ */
+constexpr uint32_t resubscribe_attempts = 3;
+
 using iroha::Commit;
 
 class CustomPeerCommunicationServiceMock : public PeerCommunicationService {
@@ -198,6 +208,7 @@ TEST_F(ToriiServiceTest, StatusWhenTxWasNotReceivedBlocking) {
     tx_request.set_tx_hash(
         shared_model::crypto::toBinaryString(tx_hashes.at(i)));
     iroha::protocol::ToriiResponse toriiResponse;
+    // this test does not require the fix for thread scheduling issues
     client.Status(tx_request, toriiResponse);
     ASSERT_EQ(toriiResponse.tx_status(),
               iroha::protocol::TxStatus::NOT_RECEIVED);
@@ -373,11 +384,12 @@ TEST_F(ToriiServiceTest, CheckHash) {
     iroha::protocol::TxStatusRequest tx_request;
     tx_request.set_tx_hash(shared_model::crypto::toBinaryString(hash));
     iroha::protocol::ToriiResponse toriiResponse;
-    // when
-    client.Status(tx_request, toriiResponse);
-    // then
-    ASSERT_EQ(toriiResponse.tx_hash(),
-              shared_model::crypto::toBinaryString(hash));
+    const auto binary_hash = shared_model::crypto::toBinaryString(hash);
+    auto resub_counter(resubscribe_attempts);
+    do {
+      client.Status(tx_request, toriiResponse);
+    } while (toriiResponse.tx_hash() != binary_hash and --resub_counter);
+    ASSERT_EQ(toriiResponse.tx_hash(), binary_hash);
   }
 }
 
@@ -408,9 +420,14 @@ TEST_F(ToriiServiceTest, StreamingFullPipelineTest) {
   // (Committed in this case) will be received. We start request before
   // transaction sending so we need in a separate thread for it.
   std::thread t([&] {
+    auto resub_counter(resubscribe_attempts);
     iroha::protocol::TxStatusRequest tx_request;
     tx_request.set_tx_hash(txhash);
-    client.StatusStream(tx_request, torii_response);
+    do {
+      client.StatusStream(tx_request, torii_response);
+    } while (torii_response.back().tx_status()
+                 != iroha::protocol::TxStatus::COMMITTED
+             and --resub_counter);
   });
 
   client.Torii(iroha_tx.getTransport());
@@ -466,6 +483,7 @@ TEST_F(ToriiServiceTest, StreamingNoTx) {
   std::thread t([&]() {
     iroha::protocol::TxStatusRequest tx_request;
     tx_request.set_tx_hash("0123456789abcdef");
+    // this test does not require the fix for thread scheduling issues
     client.StatusStream(tx_request, torii_response);
   });
 
@@ -516,7 +534,13 @@ TEST_F(ToriiServiceTest, ListOfTxs) {
         iroha::protocol::TxStatusRequest tx_request;
         tx_request.set_tx_hash(shared_model::crypto::toBinaryString(hash));
         iroha::protocol::ToriiResponse toriiResponse;
-        client.Status(tx_request, toriiResponse);
+
+        auto resub_counter(resubscribe_attempts);
+        do {
+          client.Status(tx_request, toriiResponse);
+        } while (toriiResponse.tx_status()
+                     != iroha::protocol::TxStatus::STATELESS_VALIDATION_SUCCESS
+                 and --resub_counter);
 
         ASSERT_EQ(toriiResponse.tx_status(),
                   iroha::protocol::TxStatus::STATELESS_VALIDATION_SUCCESS);
@@ -573,7 +597,13 @@ TEST_F(ToriiServiceTest, FailedListOfTxs) {
         iroha::protocol::TxStatusRequest tx_request;
         tx_request.set_tx_hash(shared_model::crypto::toBinaryString(hash));
         iroha::protocol::ToriiResponse toriiResponse;
-        client.Status(tx_request, toriiResponse);
+        auto resub_counter(resubscribe_attempts);
+        do {
+          client.Status(tx_request, toriiResponse);
+        } while (toriiResponse.tx_status()
+                     != iroha::protocol::TxStatus::STATELESS_VALIDATION_FAILED
+                 and --resub_counter);
+
         auto error_beginning = toriiResponse.error_message().substr(
             0, toriiResponse.error_message().find_first_of('.'));
 
