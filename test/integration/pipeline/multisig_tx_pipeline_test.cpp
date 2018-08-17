@@ -85,3 +85,27 @@ TEST_F(MstPipelineTest, OnePeerSendsTest) {
       .sendTx(signTx(tx, signatories.at(1)))
       .skipBlock();
 }
+
+/**
+ * @given ledger with pending transactions
+ * @when get pending transactions is executed by peer, which is to sign those
+ * transactions
+ * @then those transactions is returned
+ */
+TEST_F(MstPipelineTest, GetPendingTxsAwaitingForThisPeer) {}
+
+/**
+ * @given ledger with pending transactions, which lack two or more signatures
+ * @when signing those transactions with one signature @and executing get
+ * pending transactions
+ * @then they are returned with initial number of signatures plus one
+ */
+TEST_F(MstPipelineTest, GetPendingTxsLatestSignatures) {}
+
+/**
+ * @given ledger with pending transactions
+ * @when signing them with number of signatures to get over quorum @and
+ * executing get pending transactions
+ * @then those transactions are not returned
+ */
+TEST_F(MstPipelineTest, GetPendingTxsNoSignedTxs) {}
