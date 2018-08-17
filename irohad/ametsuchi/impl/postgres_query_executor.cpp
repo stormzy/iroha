@@ -52,6 +52,35 @@ namespace {
     boost::split(res, account_id, boost::is_any_of("@"));
     return res.size() > 1 ? res.at(1) : "";
   }
+
+  static bool hasQueryPermission(const std::string &creator,
+                                 const std::string &target_account,
+                                 Role indiv_permission_id,
+                                 Role all_permission_id,
+                                 Role domain_permission_id) {
+    const auto bits = shared_model::interface::RolePermissionSet::size();
+    boost::format cmd(R"(
+    SELECT COALESCE(bit_or(rp.permission), '0'::bit(%1%))
+          & '%2%' = '%2%' FROM role_has_permissions AS rp
+              JOIN account_has_roles AS ar on ar.role_id = rp.role_id
+              WHERE ar.account_id = :%3%
+    )");
+
+    auto perms_set = iroha::getAccountPermissions(creator, wsv_query);
+    if (not perms_set) {
+      return false;
+    }
+
+    auto &set = perms_set.value();
+    // Creator want to query his account, must have role
+    // permission
+    return (creator == target_account and set.test(indiv_permission_id)) or
+        // Creator has global permission to get any account
+        set.test(all_permission_id) or
+        // Creator has domain permission
+        (getDomainFromName(creator) == getDomainFromName(target_account)
+            and set.test(domain_permission_id));
+  }
 }  // namespace
 
 using namespace shared_model::interface::permissions;
