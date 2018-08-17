@@ -1,3 +1,8 @@
+# Copyright Soramitsu Co., Ltd. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# This dependecy is NOT working correctly at the moment
+
 add_library(shared_model_interfaces UNKNOWN IMPORTED)
 add_library(shared_model_proto_backend UNKNOWN IMPORTED)
 
@@ -29,7 +34,7 @@ if (NOT libiroha_FOUND)
         GIT_REPOSITORY ${URL}
         GIT_TAG        ${VERSION}
         CMAKE_ARGS
-            -DBOOST_ROOT=/Users/nick/Desktop/work/soramitsu/libs/install/
+            -DBOOST_ROOT=${BOOST_ROOT}
             -DTESTING=OFF
         INSTALL_COMMAND "" # remove install step
         TEST_COMMAND "" # remove test step
@@ -59,4 +64,11 @@ set_target_properties(shared_model_interfaces PROPERTIES
 set_target_properties(shared_model_proto_backend PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES ${shared_model_proto_backend_INCLUDE_DIR}
         IMPORTED_LOCATION ${shared_model_proto_backend_LIBRARY}
+        )
+
+target_link_libraries(shared_model_interfaces INTERFACE
+        boost
+        )
+target_link_libraries(shared_model_proto_backend INTERFACE
+        boost
         )

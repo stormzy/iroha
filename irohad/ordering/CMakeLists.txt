@@ -26,6 +26,5 @@ target_link_libraries(ordering_service
     shared_model_interfaces
     shared_model_proto_backend
     ordering_grpc
-    boost
     logger
     )
