@@ -121,6 +121,11 @@ namespace iroha {
 
       mst_processor_->onPreparedTransactions().subscribe([this](auto &&tx) {
         log_->info("MST tx prepared");
+        this->status_bus_->publish(
+            shared_model::builder::DefaultTransactionStatusBuilder()
+                .statelessValidationSuccess()
+                .txHash(tx->hash())
+                .build());
         return this->pcs_->propagate_transaction(tx);
       });
       mst_processor_->onExpiredTransactions().subscribe([this](auto &&tx) {
@@ -131,7 +136,6 @@ namespace iroha {
                 .mstExpired()
                 .txHash(tx->hash())
                 .build());
-        ;
       });
     }
 
@@ -149,7 +153,6 @@ namespace iroha {
                 .build());
         return;
       }
-
       log_->info("propagating tx");
       pcs_->propagate_transaction(transaction);
     }
