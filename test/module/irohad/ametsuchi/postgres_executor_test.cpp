@@ -4,13 +4,16 @@
  */
 
 #include "ametsuchi/impl/postgres_command_executor.hpp"
+#include "ametsuchi/impl/postgres_query_executor.hpp"
 #include "ametsuchi/impl/postgres_wsv_query.hpp"
 #include "framework/result_fixture.hpp"
 #include "module/irohad/ametsuchi/ametsuchi_fixture.hpp"
+#include "module/irohad/ametsuchi/ametsuchi_mocks.hpp"
 #include "module/shared_model/builders/protobuf/test_account_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_asset_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_domain_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_peer_builder.hpp"
+#include "module/shared_model/builders/protobuf/test_query_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_transaction_builder.hpp"
 
 namespace iroha {
@@ -448,15 +451,15 @@ namespace iroha {
 
     TEST_F(AppendRole, ValidAppendRoleTestWhenEmptyPerms) {
       addAllPerms();
-      ASSERT_TRUE(val(execute(buildCommand(TestTransactionBuilder().createRole(
-          another_role, {})),
-                              true)));
+      ASSERT_TRUE(val(execute(
+          buildCommand(TestTransactionBuilder().createRole(another_role, {})),
+          true)));
       ASSERT_TRUE(val(execute(buildCommand(TestTransactionBuilder().appendRole(
           account->accountId(), another_role)))));
       auto roles = query->getAccountRoles(account->accountId());
       ASSERT_TRUE(roles);
       ASSERT_TRUE(std::find(roles->begin(), roles->end(), another_role)
-                      != roles->end());
+                  != roles->end());
     }
 
     class CreateAccount : public CommandExecutorTest {
@@ -698,8 +701,8 @@ namespace iroha {
      */
     TEST_F(CreateRole, ValidCreateRoleTest) {
       addAllPerms();
-      ASSERT_TRUE(val(execute(buildCommand(
-          TestTransactionBuilder().createRole(another_role, role_permissions)))));
+      ASSERT_TRUE(val(execute(buildCommand(TestTransactionBuilder().createRole(
+          another_role, role_permissions)))));
       auto rl = query->getRolePermissions(role);
       ASSERT_TRUE(rl);
       ASSERT_EQ(rl.get(), role_permissions);
@@ -713,8 +716,8 @@ namespace iroha {
     TEST_F(CreateRole, CreateRoleTestInvalidWhenHasNoPerms) {
       role_permissions2.set(
           shared_model::interface::permissions::Role::kRemoveMySignatory);
-      ASSERT_TRUE(err(execute(buildCommand(
-          TestTransactionBuilder().createRole(another_role, role_permissions2)))));
+      ASSERT_TRUE(err(execute(buildCommand(TestTransactionBuilder().createRole(
+          another_role, role_permissions2)))));
       auto rl = query->getRolePermissions(another_role);
       ASSERT_TRUE(rl);
       ASSERT_TRUE(rl->none());
@@ -1159,7 +1162,7 @@ namespace iroha {
       shared_model::interface::types::PubkeyType pk(std::string('5', 32));
       ASSERT_TRUE(
           val(execute(buildCommand(TestTransactionBuilder().addSignatory(
-              account->accountId(), pk)),
+                          account->accountId(), pk)),
                       true)));
       ASSERT_TRUE(
           err(execute(buildCommand(TestTransactionBuilder().setAccountQuorum(
@@ -1564,6 +1567,119 @@ namespace iroha {
                                                  asset_id,
                                                  "desc",
                                                  "2.0")))));
+    }
+
+    //============= Query executor test =============//
+
+    class QueryExecutorTest : public AmetsuchiTest {
+     public:
+      QueryExecutorTest() {
+        domain = clone(
+            TestDomainBuilder().domainId("domain").defaultRole(role).build());
+
+        account = clone(TestAccountBuilder()
+                            .domainId(domain->domainId())
+                            .accountId("id@" + domain->domainId())
+                            .quorum(1)
+                            .jsonData(R"({"id@domain": {"key": "value"}})")
+                            .build());
+        role_permissions.set(
+            shared_model::interface::permissions::Role::kAddMySignatory);
+        grantable_permission =
+            shared_model::interface::permissions::Grantable::kAddMySignatory;
+        pubkey = std::make_unique<shared_model::interface::types::PubkeyType>(
+            std::string('1', 32));
+      }
+
+      void SetUp() override {
+        AmetsuchiTest::SetUp();
+        sql = std::make_unique<soci::session>(soci::postgresql, pgopt_);
+
+        auto factory =
+            std::make_shared<shared_model::proto::ProtoCommonObjectsFactory<
+                shared_model::validation::FieldValidator>>();
+        query = std::make_unique<iroha::ametsuchi::PostgresQueryExecutor>(
+            std::make_shared<MockStorage>(), *sql, factory);
+        executor = std::make_unique<PostgresCommandExecutor>(*sql);
+
+        *sql << init_;
+
+        ASSERT_TRUE(val(execute(buildCommand(
+            TestTransactionBuilder().createRole(role, role_permissions)), true)));
+        ASSERT_TRUE(val(execute(buildCommand(
+            TestTransactionBuilder().createDomain(domain->domainId(), role)), true)));
+        ASSERT_TRUE(
+            val(execute(buildCommand(TestTransactionBuilder().createAccount(
+                "id", domain->domainId(), *pubkey)), true)));
+      }
+
+      CommandResult execute(
+          const std::unique_ptr<shared_model::interface::Command> &command,
+          bool do_validation = false,
+          const shared_model::interface::types::AccountIdType &creator =
+          "id@domain") {
+        executor->doValidation(not do_validation);
+        executor->setCreatorAccountId(creator);
+        return boost::apply_visitor(*executor, command->get());
+      }
+
+      // TODO 2018-04-20 Alexey Chernyshov - IR-1276 - rework function with
+      // CommandBuilder
+      /**
+       * Hepler function to build command and wrap it into
+       * std::unique_ptr<>
+       * @param builder command builder
+       * @return command
+       */
+      std::unique_ptr<shared_model::interface::Command> buildCommand(
+          const TestTransactionBuilder &builder) {
+        return clone(builder.build().commands().front());
+      }
+
+      void addAllPerms(
+          const shared_model::interface::types::AccountIdType account_id =
+              "id@domain",
+          const shared_model::interface::types::RoleIdType role_id = "all") {
+        shared_model::interface::RolePermissionSet permissions;
+        permissions.set();
+        ASSERT_TRUE(
+            val(execute(buildCommand(TestTransactionBuilder().createRole(
+                            role_id, permissions)),
+                        true)));
+        ASSERT_TRUE(
+            val(execute(buildCommand(TestTransactionBuilder().appendRole(
+                            account_id, role_id)),
+                        true)));
+      }
+
+      std::string role = "role";
+      shared_model::interface::RolePermissionSet role_permissions;
+      shared_model::interface::permissions::Grantable grantable_permission;
+      std::unique_ptr<shared_model::interface::Account> account;
+      std::unique_ptr<shared_model::interface::Domain> domain;
+      std::unique_ptr<shared_model::interface::types::PubkeyType> pubkey;
+
+      std::unique_ptr<soci::session> sql;
+
+      std::unique_ptr<shared_model::interface::Command> command;
+
+      std::unique_ptr<QueryExecutor> query;
+      std::unique_ptr<CommandExecutor> executor;
+    };
+
+    TEST_F(QueryExecutorTest, BlocksQueryExecutorTestValid) {
+      addAllPerms();
+      auto blocks_query = TestBlocksQueryBuilder()
+                              .creatorAccountId(account->accountId())
+                              .build();
+      ASSERT_TRUE(query->validate(blocks_query));
+    }
+
+    TEST_F(QueryExecutorTest, BlocksQueryExecutorTestInvalid) {
+      auto blocks_query = TestBlocksQueryBuilder()
+                              .creatorAccountId(account->accountId())
+                              .build();
+      ASSERT_FALSE(query->validate(blocks_query));
     }
 
   }  // namespace ametsuchi

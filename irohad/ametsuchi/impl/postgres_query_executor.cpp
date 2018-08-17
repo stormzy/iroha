@@ -5,6 +5,16 @@
 
 #include "ametsuchi/impl/postgres_query_executor.hpp"
 
+#include <boost-tuple.h>
+#include <soci/boost-tuple.h>
+#include <boost/algorithm/string.hpp>
+#include <boost/format.hpp>
+
+#include "ametsuchi/impl/soci_utils.hpp"
+#include "interfaces/queries/blocks_query.hpp"
+
+using namespace shared_model::interface::permissions;
+
 namespace {
   /**
    * Generates a query response that contains an error response
@@ -53,33 +63,67 @@ namespace {
     return res.size() > 1 ? res.at(1) : "";
   }
 
-  static bool hasQueryPermission(const std::string &creator,
-                                 const std::string &target_account,
-                                 Role indiv_permission_id,
-                                 Role all_permission_id,
-                                 Role domain_permission_id) {
+  std::string checkAccountRolePermission(
+      shared_model::interface::permissions::Role permission,
+      const std::string &account_alias = "role_account_id") {
+    const auto perm_str =
+        shared_model::interface::RolePermissionSet({permission}).toBitstring();
     const auto bits = shared_model::interface::RolePermissionSet::size();
-    boost::format cmd(R"(
-    SELECT COALESCE(bit_or(rp.permission), '0'::bit(%1%))
+    std::string query = (boost::format(R"(
+          SELECT COALESCE(bit_or(rp.permission), '0'::bit(%1%))
           & '%2%' = '%2%' FROM role_has_permissions AS rp
               JOIN account_has_roles AS ar on ar.role_id = rp.role_id
-              WHERE ar.account_id = :%3%
+              WHERE ar.account_id = :%3%)")
+        % bits % perm_str % account_alias)
+        .str();
+    return query;
+  }
+
+  auto hasQueryPermission(const std::string &creator,
+                          const std::string &target_account,
+                          Role indiv_permission_id,
+                          Role all_permission_id,
+                          Role domain_permission_id) {
+    const auto bits = shared_model::interface::RolePermissionSet::size();
+    const auto perm_str =
+        shared_model::interface::RolePermissionSet({indiv_permission_id})
+            .toBitstring();
+    const auto all_perm_str =
+        shared_model::interface::RolePermissionSet({all_permission_id})
+            .toBitstring();
+    const auto domain_perm_str =
+        shared_model::interface::RolePermissionSet({domain_permission_id})
+            .toBitstring();
+
+    boost::format cmd(R"(
+    WITH
+        has_indiv_perm AS (
+          SELECT COALESCE(bit_or(rp.permission), '0'::bit(%1%))
+          & '%3%' = '%3%' FROM role_has_permissions AS rp
+              JOIN account_has_roles AS ar on ar.role_id = rp.role_id
+              WHERE ar.account_id = :%2%
+        ),
+        has_all_perm AS (
+          SELECT COALESCE(bit_or(rp.permission), '0'::bit(%1%))
+          & '%4%' = '%4%' FROM role_has_permissions AS rp
+              JOIN account_has_roles AS ar on ar.role_id = rp.role_id
+              WHERE ar.account_id = :%2%
+        ),
+        has_domain_perm AS (
+          SELECT COALESCE(bit_or(rp.permission), '0'::bit(%1%))
+          & '%5%' = '%5%' FROM role_has_permissions AS rp
+              JOIN account_has_roles AS ar on ar.role_id = rp.role_id
+              WHERE ar.account_id = :%2%
+        ),
+    SELECT (%2% = %6% AND (SELECT * FROM has_indiv_perm))
+        OR (SELECT * FROM has_all_perm)
+        OR (%7% = %8% AND (SELECT * FROM has_domain_perm))
     )");
 
-    auto perms_set = iroha::getAccountPermissions(creator, wsv_query);
-    if (not perms_set) {
-      return false;
-    }
-
-    auto &set = perms_set.value();
-    // Creator want to query his account, must have role
-    // permission
-    return (creator == target_account and set.test(indiv_permission_id)) or
-        // Creator has global permission to get any account
-        set.test(all_permission_id) or
-        // Creator has domain permission
-        (getDomainFromName(creator) == getDomainFromName(target_account)
-            and set.test(domain_permission_id));
+    return (cmd % bits % creator % perm_str % all_perm_str % domain_perm_str
+            % target_account % getDomainFromName(creator)
+            % getDomainFromName(target_account))
+        .str();
   }
 }  // namespace
 
@@ -98,7 +142,21 @@ namespace iroha {
 
     QueryExecutorResult PostgresQueryExecutor::validateAndExecute(
         const shared_model::interface::Query &query) {
+      visitor_.setCreatorId(query.creatorAccountId());
       return boost::apply_visitor(visitor_, query.get());
+    }
+
+    bool PostgresQueryExecutor::validate(
+        const shared_model::interface::BlocksQuery &query) {
+      boost::format cmd(R"(%s)");
+      soci::statement st = (sql_.prepare << (cmd % checkAccountRolePermission(Role::kGetBlocks)).str());
+      int has_perm;
+      st.exchange(soci::use(query.creatorAccountId(), "role_account_id"));
+      st.exchange(soci::into(has_perm));
+      st.define_and_bind();
+      st.execute(true);
+
+      return has_perm > 0;
     }
 
     PostgresQueryExecutorVisitor::PostgresQueryExecutorVisitor(
@@ -107,7 +165,7 @@ namespace iroha {
         : sql_(sql), factory_(factory) {}
 
     void PostgresQueryExecutorVisitor::setCreatorId(
-        shared_model::interface::types::AccountIdType &creator_id) {
+        const shared_model::interface::types::AccountIdType &creator_id) {
       creator_id_ = creator_id;
     }
 
@@ -122,7 +180,9 @@ namespace iroha {
       T tuple;
       soci::statement st = (sql_.prepare <<
                             R"(WITH has_perm AS ()"
-                                + hasQueryPermission(Role::kGetMyAccount,
+                                + hasQueryPermission(creator_id_,
+                                                     q.accountId(),
+                                                     Role::kGetMyAccount,
                                                      Role::kGetAllAccounts,
                                                      Role::kGetDomainAccounts)
                                 + R"(),
@@ -157,9 +217,7 @@ namespace iroha {
       auto account = fromResult(factory_->createAccount(
           q.accountId(), tuple.get<1>(), tuple.get<2>(), tuple.get<3>()));
 
-      auto roles =
-
-          return nullptr;
+      return nullptr;
     }
 
     QueryExecutorResult PostgresQueryExecutorVisitor::operator()(

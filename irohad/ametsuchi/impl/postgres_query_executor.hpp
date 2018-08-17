@@ -49,7 +49,7 @@ namespace iroha {
               factory);
 
       void setCreatorId(
-          shared_model::interface::types::AccountIdType &creator_id);
+          const shared_model::interface::types::AccountIdType &creator_id);
 
       QueryExecutorResult operator()(
           const shared_model::interface::GetAccount &q);
