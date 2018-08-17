@@ -31,7 +31,7 @@ namespace iroha {
        * @param query
        * @return query response
        */
-      QueryExecutorResult
+      virtual QueryExecutorResult
       validateAndExecute(const shared_model::interface::Query &query) = 0;
 
       /**
