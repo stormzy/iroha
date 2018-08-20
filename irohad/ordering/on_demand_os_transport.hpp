@@ -65,7 +65,7 @@ namespace iroha {
          * Type of stored transactions
          */
         using TransactionType =
-            std::unique_ptr<shared_model::interface::Transaction>;
+            std::shared_ptr<shared_model::interface::Transaction>;
 
         /**
          * Type of inserted collections
@@ -76,7 +76,7 @@ namespace iroha {
          * Callback on receiving transactions
          * @param transactions - vector of passed transactions
          */
-        virtual void onTransactions(CollectionType &&transactions) = 0;
+        virtual void onTransactions(CollectionType transactions) = 0;
 
         /**
          * Callback on request about proposal
@@ -97,6 +97,7 @@ namespace iroha {
        public:
         /**
          * Create corresponding OdOsNotification interface for peer
+         * Returned pointer is guaranteed to be not equal to nullptr
          * @param peer - peer to connect
          * @return connection represented with OdOsNotification interface
          */

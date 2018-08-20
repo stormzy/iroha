@@ -51,3 +51,11 @@ target_link_libraries(on_demand_ordering_service_transport_grpc
     logger
     ordering_grpc
     )
+
+add_library(on_demand_connection_manager
+    impl/on_demand_connection_manager.cpp
+    )
+target_link_libraries(on_demand_connection_manager
+    shared_model_interfaces
+    rxcpp
+    )
