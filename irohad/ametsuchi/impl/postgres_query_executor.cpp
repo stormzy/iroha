@@ -71,7 +71,7 @@ namespace {
     const auto bits = shared_model::interface::RolePermissionSet::size();
     std::string query = (boost::format(R"(
           SELECT COALESCE(bit_or(rp.permission), '0'::bit(%1%))
-          & '%2%' = '%2%' FROM role_has_permissions AS rp
+          & '%2%' = '%2%' AS perm FROM role_has_permissions AS rp
               JOIN account_has_roles AS ar on ar.role_id = rp.role_id
               WHERE ar.account_id = :%3%)")
                          % bits % perm_str % account_alias)
@@ -336,8 +336,6 @@ namespace iroha {
       int has_perm = -1;
 
       std::vector<shared_model::proto::AccountAsset> account_assets;
-      std::vector<std::shared_ptr<shared_model::interface::AccountAsset>>
-          assets;
       processSoci(st, ind, row, [&account_assets, &has_perm, this](T &row) {
         has_perm = row.get<3>();
         if (row.get<0>()) {
@@ -346,9 +344,9 @@ namespace iroha {
               row.get<1>().get(),
               shared_model::interface::Amount(row.get<2>().get())))
               | [&account_assets](const auto &asset) {
-                  account_assets.push_back(
-                      *std::static_pointer_cast<
-                          shared_model::proto::AccountAsset>(asset));
+                  auto proto = *std::static_pointer_cast<
+                      shared_model::proto::AccountAsset>(asset);
+                  account_assets.push_back(proto);
                 };
         }
       });
@@ -366,22 +364,173 @@ namespace iroha {
 
     QueryResponseBuilderDone PostgresQueryExecutorVisitor::operator()(
         const shared_model::interface::GetAccountDetail &q) {
-      return statefulFailed();
+      boost::tuple<boost::optional<std::string>, int> row;
+      std::string query_detail;
+      if (q.key() and q.writer()) {
+        auto filled_json = (boost::format("{\"%s\", \"%s\"}") % q.writer().get()
+                            % q.key().get());
+        query_detail = (boost::format(R"(SELECT json_build_object('%s'::text,
+            json_build_object('%s'::text, (SELECT data #>> '%s'
+            FROM account WHERE account_id = :account_id))) AS json)")
+                        % q.writer().get() % q.key().get() % filled_json)
+                           .str();
+      } else if (q.key() and not q.writer()) {
+        query_detail =
+            (boost::format(
+                 R"(SELECT json_object_agg(key, value) AS json FROM (SELECT
+            json_build_object(kv.key, json_build_object('%1%'::text,
+            kv.value -> '%1%')) FROM jsonb_each((SELECT data FROM account
+            WHERE account_id = :account_id)) kv WHERE kv.value ? '%1%') AS
+            jsons, json_each(json_build_object))")
+             % q.key().get())
+                .str();
+      } else if (not q.key() and q.writer()) {
+        query_detail = (boost::format(R"(SELECT json_build_object('%1%'::text,
+          (SELECT data -> '%1%' FROM account WHERE account_id =
+           :account_id)) AS json)")
+                        % q.writer().get())
+                           .str();
+      } else {
+        query_detail = (boost::format(R"(SELECT data#>>'{}' AS json FROM account
+            WHERE account_id = :account_id)"))
+                           .str();
+      }
+      auto cmd = (boost::format(R"(WITH has_perms AS (%s),
+      detail AS (%s)
+      SELECT json, perm FROM detail
+      RIGHT OUTER JOIN has_perms ON TRUE
+      )")
+                  % hasQueryPermission(creator_id_,
+                                       q.accountId(),
+                                       Role::kGetMyAccDetail,
+                                       Role::kGetAllAccDetail,
+                                       Role::kGetDomainAccDetail)
+                  % query_detail)
+                     .str();
+      soci::statement st = (sql_.prepare << cmd);
+      st.exchange(soci::use(q.accountId(), "account_id"));
+      st.exchange(soci::into(row));
+
+      st.define_and_bind();
+      st.execute(true);
+
+      if (not row.get<1>()) {
+        return statefulFailed();
+      }
+
+      if (not row.get<0>().is_initialized()) {
+        return buildError<
+            shared_model::interface::NoAccountDetailErrorResponse>();
+      }
+
+      auto response =
+          QueryResponseBuilder().accountDetailResponse(row.get<0>().get());
+      return response;
     }
 
     QueryResponseBuilderDone PostgresQueryExecutorVisitor::operator()(
         const shared_model::interface::GetRoles &q) {
-      return statefulFailed();
+      soci::indicator ind;
+      using T = boost::tuple<boost::optional<std::string>, int>;
+      T row;
+      auto cmd = (boost::format(
+                      R"(WITH has_perms AS (%s)
+      SELECT role_id, perm FROM role
+      RIGHT OUTER JOIN has_perms ON TRUE
+      )") % checkAccountRolePermission(Role::kGetRoles))
+                     .str();
+      soci::statement st = (sql_.prepare << cmd);
+      st.exchange(soci::use(creator_id_, "role_account_id"));
+      st.exchange(soci::into(row, ind));
+
+      st.define_and_bind();
+      st.execute();
+
+      std::vector<shared_model::interface::types::RoleIdType> roles;
+      int has_perm;
+
+      processSoci(st, ind, row, [&roles, &has_perm](T &row) {
+        has_perm = row.get<1>();
+        if (row.get<0>().is_initialized()) {
+          roles.push_back(row.get<0>().get());
+        }
+      });
+
+      if (not has_perm) {
+        return statefulFailed();
+      }
+
+      if (roles.empty()) {
+        return buildError<shared_model::interface::NoRolesErrorResponse>();
+      }
+      auto response = QueryResponseBuilder().rolesResponse(roles);
+      return response;
     }
 
     QueryResponseBuilderDone PostgresQueryExecutorVisitor::operator()(
         const shared_model::interface::GetRolePermissions &q) {
-      return statefulFailed();
+      using T = boost::tuple<boost::optional<std::string>, int>;
+      T row;
+      auto cmd = (boost::format(
+                      R"(WITH has_perms AS (%s),
+      perms AS (SELECT permission FROM role_has_permissions
+                WHERE role_id = :role_name)
+      SELECT permission, perm FROM perms
+      RIGHT OUTER JOIN has_perms ON TRUE
+      )") % checkAccountRolePermission(Role::kGetRoles))
+                     .str();
+      soci::statement st = (sql_.prepare << cmd);
+      st.exchange(soci::use(creator_id_, "role_account_id"));
+      st.exchange(soci::use(q.roleId(), "role_name"));
+      st.exchange(soci::into(row));
+      shared_model::interface::RolePermissionSet set;
+
+      st.define_and_bind();
+      st.execute(true);
+
+      if (not row.get<1>()) {
+        return statefulFailed();
+      }
+
+      if (not row.get<0>()) {
+        return buildError<shared_model::interface::NoRolesErrorResponse>();
+      }
+      auto response = QueryResponseBuilder().rolePermissionsResponse(
+          shared_model::interface::RolePermissionSet(row.get<0>().get()));
+      return response;
     }
 
     QueryResponseBuilderDone PostgresQueryExecutorVisitor::operator()(
         const shared_model::interface::GetAssetInfo &q) {
-      return statefulFailed();
+      using T = boost::tuple<boost::optional<std::string>, boost::optional<uint32_t >, int>;
+      T row;
+      auto cmd = (boost::format(
+          R"(WITH has_perms AS (%s),
+      perms AS (SELECT domain_id, precision FROM asset
+                WHERE asset_id = :asset_id)
+      SELECT domain_id, precision, perm FROM perms
+      RIGHT OUTER JOIN has_perms ON TRUE
+      )") % checkAccountRolePermission(Role::kReadAssets))
+          .str();
+      soci::statement st = (sql_.prepare << cmd);
+      st.exchange(soci::use(creator_id_, "role_account_id"));
+      st.exchange(soci::use(q.assetId(), "asset_id"));
+      st.exchange(soci::into(row));
+      shared_model::interface::RolePermissionSet set;
+
+      st.define_and_bind();
+      st.execute(true);
+
+      if (not row.get<2>()) {
+        return statefulFailed();
+      }
+
+      if (not row.get<0>().is_initialized()) {
+        return buildError<shared_model::interface::NoAssetErrorResponse>();
+      }
+      auto response = QueryResponseBuilder().assetResponse(
+          q.assetId(), row.get<0>().get(), row.get<1>().get());
+      return response;
     }
 
     QueryResponseBuilderDone PostgresQueryExecutorVisitor::operator()(

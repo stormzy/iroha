@@ -276,74 +276,78 @@ namespace iroha {
                 std::string('2', 32));
         ASSERT_TRUE(
             val(execute(buildCommand(TestTransactionBuilder().createAccount(
-                "id2", domain->domainId(), *pubkey2)),
+                            "id2", domain->domainId(), *pubkey2)),
                         true)));
       }
 
       std::unique_ptr<shared_model::interface::Account> account2;
     };
 
-    TEST_F(GetSignatoriesExecutorTest, GetSignatoriesExecutorTestValidMyAccount) {
+    TEST_F(GetSignatoriesExecutorTest,
+           GetSignatoriesExecutorTestValidMyAccount) {
       addPerms({shared_model::interface::permissions::Role::kGetMySignatories});
       auto query = TestQueryBuilder()
-          .createdTime(0)
-          .creatorAccountId(account->accountId())
-          .getSignatories(account->accountId())
-          .build();
+                       .createdTime(0)
+                       .creatorAccountId(account->accountId())
+                       .getSignatories(account->accountId())
+                       .build();
       auto result = query_executor->validateAndExecute(query);
       ASSERT_NO_THROW({
-                        const auto &cast_resp = boost::apply_visitor(
-                            framework::SpecifiedVisitor<
-                                shared_model::interface::SignatoriesResponse>(),
-                            result->get());
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::SignatoriesResponse>(),
+            result->get());
 
-                        ASSERT_EQ(cast_resp.keys().size(), 1);
-                      });
+        ASSERT_EQ(cast_resp.keys().size(), 1);
+      });
     }
 
-    TEST_F(GetSignatoriesExecutorTest, GetSignatoriesExecutorTestValidAllAccounts) {
-      addPerms({shared_model::interface::permissions::Role::kGetAllSignatories});
+    TEST_F(GetSignatoriesExecutorTest,
+           GetSignatoriesExecutorTestValidAllAccounts) {
+      addPerms(
+          {shared_model::interface::permissions::Role::kGetAllSignatories});
       auto query = TestQueryBuilder()
-          .createdTime(0)
-          .creatorAccountId(account->accountId())
-          .getSignatories(account2->accountId())
-          .build();
+                       .createdTime(0)
+                       .creatorAccountId(account->accountId())
+                       .getSignatories(account2->accountId())
+                       .build();
       auto result = query_executor->validateAndExecute(query);
       ASSERT_NO_THROW({
-                        const auto &cast_resp = boost::apply_visitor(
-                            framework::SpecifiedVisitor<
-                                shared_model::interface::SignatoriesResponse>(),
-                            result->get());
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::SignatoriesResponse>(),
+            result->get());
 
-                        ASSERT_EQ(cast_resp.keys().size(), 1);
-                      });
+        ASSERT_EQ(cast_resp.keys().size(), 1);
+      });
     }
 
-    TEST_F(GetSignatoriesExecutorTest, GetSignatoriesExecutorTestValidDomainAccount) {
+    TEST_F(GetSignatoriesExecutorTest,
+           GetSignatoriesExecutorTestValidDomainAccount) {
       addPerms(
           {shared_model::interface::permissions::Role::kGetDomainSignatories});
       auto query = TestQueryBuilder()
-          .createdTime(0)
-          .creatorAccountId(account->accountId())
-          .getSignatories(account2->accountId())
-          .build();
+                       .createdTime(0)
+                       .creatorAccountId(account->accountId())
+                       .getSignatories(account2->accountId())
+                       .build();
       auto result = query_executor->validateAndExecute(query);
       ASSERT_NO_THROW({
-                        const auto &cast_resp = boost::apply_visitor(
-                            framework::SpecifiedVisitor<
-                                shared_model::interface::SignatoriesResponse>(),
-                            result->get());
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::SignatoriesResponse>(),
+            result->get());
 
-                        ASSERT_EQ(cast_resp.keys().size(), 1);
-                      });
+        ASSERT_EQ(cast_resp.keys().size(), 1);
+      });
     }
 
     TEST_F(GetSignatoriesExecutorTest, GetSignatoriesExecutorTestInvalid) {
       auto query = TestQueryBuilder()
-          .createdTime(0)
-          .creatorAccountId(account->accountId())
-          .getSignatories(account2->accountId())
-          .build();
+                       .createdTime(0)
+                       .creatorAccountId(account->accountId())
+                       .getSignatories(account2->accountId())
+                       .build();
       auto result = query_executor->validateAndExecute(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
@@ -351,13 +355,15 @@ namespace iroha {
           result->get()));
     }
 
-    TEST_F(GetSignatoriesExecutorTest, GetSignatoriesExecutorTestInvalidNoAccount) {
-      addPerms({shared_model::interface::permissions::Role::kGetAllSignatories});
+    TEST_F(GetSignatoriesExecutorTest,
+           GetSignatoriesExecutorTestInvalidNoAccount) {
+      addPerms(
+          {shared_model::interface::permissions::Role::kGetAllSignatories});
       auto query = TestQueryBuilder()
-          .createdTime(0)
-          .creatorAccountId(account->accountId())
-          .getSignatories("some@domain")
-          .build();
+                       .createdTime(0)
+                       .creatorAccountId(account->accountId())
+                       .getSignatories("some@domain")
+                       .build();
       auto result = query_executor->validateAndExecute(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
@@ -386,24 +392,25 @@ namespace iroha {
                 std::string('2', 32));
         ASSERT_TRUE(
             val(execute(buildCommand(TestTransactionBuilder().createAccount(
-                "id2", domain->domainId(), *pubkey2)),
+                            "id2", domain->domainId(), *pubkey2)),
                         true)));
-
 
         ASSERT_TRUE(
             val(execute(buildCommand(TestTransactionBuilder().createAsset(
-                "coin", domain->domainId(), 1)),
+                            "coin", domain->domainId(), 1)),
                         true)));
 
         ASSERT_TRUE(val(
             execute(buildCommand(TestTransactionBuilder()
                                      .addAssetQuantity(asset_id, "1.0")
-                                     .creatorAccountId(account->accountId())), true)));
+                                     .creatorAccountId(account->accountId())),
+                    true)));
         ASSERT_TRUE(val(
             execute(buildCommand(TestTransactionBuilder()
                                      .addAssetQuantity(asset_id, "1.0")
-                                     .creatorAccountId(account2->accountId())), true)));
-
+                                     .creatorAccountId(account2->accountId())),
+                    true,
+                    account2->accountId())));
       }
 
       std::unique_ptr<shared_model::interface::Account> account2;
@@ -411,65 +418,71 @@ namespace iroha {
           "coin#" + domain->domainId();
     };
 
-    TEST_F(GetAccountAssetExecutorTest, GetAccountAssetExecutorTestValidMyAccount) {
+    TEST_F(GetAccountAssetExecutorTest,
+           GetAccountAssetExecutorTestValidMyAccount) {
       addPerms({shared_model::interface::permissions::Role::kGetMyAccAst});
       auto query = TestQueryBuilder()
-          .creatorAccountId(account->accountId())
-          .getAccountAssets(account->accountId())
-          .build();
+                       .creatorAccountId(account->accountId())
+                       .getAccountAssets(account->accountId())
+                       .build();
       auto result = query_executor->validateAndExecute(query);
       ASSERT_NO_THROW({
-                        const auto &cast_resp = boost::apply_visitor(
-                            framework::SpecifiedVisitor<
-                                shared_model::interface::AccountAssetResponse>(),
-                            result->get());
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::AccountAssetResponse>(),
+            result->get());
 
-                        ASSERT_EQ(cast_resp.accountAssets()[0].accountId(), account->accountId());
-                        ASSERT_EQ(cast_resp.accountAssets()[0].assetId(), asset_id);
-                      });
+        ASSERT_EQ(cast_resp.accountAssets()[0].accountId(),
+                  account->accountId());
+        ASSERT_EQ(cast_resp.accountAssets()[0].assetId(), asset_id);
+      });
     }
 
-    TEST_F(GetAccountAssetExecutorTest, GetAccountAssetExecutorTestValidAllAccounts) {
+    TEST_F(GetAccountAssetExecutorTest,
+           GetAccountAssetExecutorTestValidAllAccounts) {
       addPerms({shared_model::interface::permissions::Role::kGetAllAccAst});
       auto query = TestQueryBuilder()
-          .creatorAccountId(account->accountId())
-          .getAccountAssets(account2->accountId())
-          .build();
+                       .creatorAccountId(account->accountId())
+                       .getAccountAssets(account2->accountId())
+                       .build();
       auto result = query_executor->validateAndExecute(query);
       ASSERT_NO_THROW({
-                        const auto &cast_resp = boost::apply_visitor(
-                            framework::SpecifiedVisitor<
-                                shared_model::interface::AccountAssetResponse>(),
-                            result->get());
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::AccountAssetResponse>(),
+            result->get());
 
-                        ASSERT_EQ(cast_resp.accountAssets()[0].accountId(), account2->accountId());
-                        ASSERT_EQ(cast_resp.accountAssets()[0].assetId(), asset_id);
-                      });
+        ASSERT_EQ(cast_resp.accountAssets()[0].accountId(),
+                  account2->accountId());
+        ASSERT_EQ(cast_resp.accountAssets()[0].assetId(), asset_id);
+      });
     }
 
-    TEST_F(GetAccountAssetExecutorTest, GetAccountAssetExecutorTestValidDomainAccount) {
+    TEST_F(GetAccountAssetExecutorTest,
+           GetAccountAssetExecutorTestValidDomainAccount) {
       addPerms({shared_model::interface::permissions::Role::kGetDomainAccAst});
       auto query = TestQueryBuilder()
-          .creatorAccountId(account->accountId())
-          .getAccountAssets(account2->accountId())
-          .build();
+                       .creatorAccountId(account->accountId())
+                       .getAccountAssets(account2->accountId())
+                       .build();
       auto result = query_executor->validateAndExecute(query);
       ASSERT_NO_THROW({
-                        const auto &cast_resp = boost::apply_visitor(
-                            framework::SpecifiedVisitor<
-                                shared_model::interface::AccountAssetResponse>(),
-                            result->get());
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::AccountAssetResponse>(),
+            result->get());
 
-                        ASSERT_EQ(cast_resp.accountAssets()[0].accountId(), account2->accountId());
-                        ASSERT_EQ(cast_resp.accountAssets()[0].assetId(), asset_id);
-                      });
+        ASSERT_EQ(cast_resp.accountAssets()[0].accountId(),
+                  account2->accountId());
+        ASSERT_EQ(cast_resp.accountAssets()[0].assetId(), asset_id);
+      });
     }
 
     TEST_F(GetAccountAssetExecutorTest, GetAccountAssetExecutorTestInvalid) {
       auto query = TestQueryBuilder()
-          .creatorAccountId(account->accountId())
-          .getAccountAssets(account->accountId())
-          .build();
+                       .creatorAccountId(account->accountId())
+                       .getAccountAssets(account->accountId())
+                       .build();
       auto result = query_executor->validateAndExecute(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
@@ -477,16 +490,358 @@ namespace iroha {
           result->get()));
     }
 
-    TEST_F(GetAccountAssetExecutorTest, GetAccountAssetExecutorTestInvalidNoAccount) {
-      addPerms({shared_model::interface::permissions::Role::kGetDomainAccAst});
+    TEST_F(GetAccountAssetExecutorTest,
+           GetAccountAssetExecutorTestInvalidNoAccount) {
+      addPerms({shared_model::interface::permissions::Role::kGetAllAccAst});
       auto query = TestQueryBuilder()
-          .creatorAccountId(account->accountId())
-          .getAccountAssets(account2->accountId())
-          .build();
+                       .creatorAccountId(account->accountId())
+                       .getAccountAssets("some@domain")
+                       .build();
       auto result = query_executor->validateAndExecute(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
               shared_model::interface::NoAccountAssetsErrorResponse>(),
+          result->get()));
+    }
+
+    class GetAccountDetailExecutorTest : public QueryExecutorTest {
+     public:
+      void SetUp() override {
+        QueryExecutorTest::SetUp();
+
+        account2 = clone(TestAccountBuilder()
+                             .domainId(domain->domainId())
+                             .accountId("id2@" + domain->domainId())
+                             .quorum(1)
+                             .jsonData("{\"id@domain\": {\"key\": \"value\", "
+                                       "\"key2\": \"value2\"},"
+                                       " \"id2@domain\": {\"key\": \"value\", "
+                                       "\"key2\": \"value2\"}}")
+                             .build());
+        auto pubkey2 =
+            std::make_unique<shared_model::interface::types::PubkeyType>(
+                std::string('2', 32));
+        ASSERT_TRUE(
+            val(execute(buildCommand(TestTransactionBuilder().createAccount(
+                            "id2", domain->domainId(), *pubkey2)),
+                        true)));
+
+        ASSERT_TRUE(
+            val(execute(buildCommand(TestTransactionBuilder().createAsset(
+                            "coin", domain->domainId(), 1)),
+                        true)));
+
+        ASSERT_TRUE(
+            val(execute(buildCommand(TestTransactionBuilder().setAccountDetail(
+                            account2->accountId(), "key", "value")),
+                        true,
+                        account->accountId())));
+        ASSERT_TRUE(
+            val(execute(buildCommand(TestTransactionBuilder().setAccountDetail(
+                            account2->accountId(), "key2", "value2")),
+                        true,
+                        account->accountId())));
+        ASSERT_TRUE(
+            val(execute(buildCommand(TestTransactionBuilder().setAccountDetail(
+                            account2->accountId(), "key", "value")),
+                        true,
+                        account2->accountId())));
+        ASSERT_TRUE(
+            val(execute(buildCommand(TestTransactionBuilder().setAccountDetail(
+                            account2->accountId(), "key2", "value2")),
+                        true,
+                        account2->accountId())));
+      }
+
+      std::unique_ptr<shared_model::interface::Account> account2;
+    };
+
+    TEST_F(GetAccountDetailExecutorTest,
+           GetAccountDetailExecutorTestValidMyAccount) {
+      addPerms({shared_model::interface::permissions::Role::kGetMyAccDetail});
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getAccountDetail(account->accountId())
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::AccountDetailResponse>(),
+            result->get());
+
+        ASSERT_EQ(cast_resp.detail(), "{}");
+      });
+    }
+
+    TEST_F(GetAccountDetailExecutorTest,
+           GetAccountDetailExecutorTestValidAllAccounts) {
+      addPerms({shared_model::interface::permissions::Role::kGetAllAccDetail});
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getAccountDetail(account2->accountId())
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::AccountDetailResponse>(),
+            result->get());
+
+        ASSERT_EQ(cast_resp.detail(), account2->jsonData());
+      });
+    }
+
+    TEST_F(GetAccountDetailExecutorTest,
+           GetAccountDetailExecutorTestValidDomainAccount) {
+      addPerms(
+          {shared_model::interface::permissions::Role::kGetDomainAccDetail});
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getAccountDetail(account2->accountId())
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::AccountDetailResponse>(),
+            result->get());
+
+        ASSERT_EQ(cast_resp.detail(), account2->jsonData());
+      });
+    }
+
+    TEST_F(GetAccountDetailExecutorTest, GetAccountDetailExecutorTestInvalid) {
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getAccountDetail(account2->accountId())
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_TRUE(boost::apply_visitor(
+          shared_model::interface::QueryErrorResponseChecker<
+              shared_model::interface::StatefulFailedErrorResponse>(),
+          result->get()));
+    }
+
+    TEST_F(GetAccountDetailExecutorTest,
+           GetAccountDetailExecutorTestInvalidNoAccount) {
+      addPerms({shared_model::interface::permissions::Role::kGetAllAccDetail});
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getAccountDetail("some@domain")
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_TRUE(boost::apply_visitor(
+          shared_model::interface::QueryErrorResponseChecker<
+              shared_model::interface::NoAccountDetailErrorResponse>(),
+          result->get()));
+    }
+
+    TEST_F(GetAccountDetailExecutorTest, GetAccountDetailExecutorTestValidKey) {
+      addPerms({shared_model::interface::permissions::Role::kGetAllAccDetail});
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getAccountDetail(account2->accountId(), "key")
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::AccountDetailResponse>(),
+            result->get());
+
+        ASSERT_EQ(cast_resp.detail(),
+                  "{ \"id@domain\" : {\"key\" : \"value\"}, \"id2@domain\" : "
+                  "{\"key\" : \"value\"} }");
+      });
+    }
+
+    TEST_F(GetAccountDetailExecutorTest,
+           GetAccountDetailExecutorTestValidWriter) {
+      addPerms({shared_model::interface::permissions::Role::kGetAllAccDetail});
+      auto query =
+          TestQueryBuilder()
+              .creatorAccountId(account->accountId())
+              .getAccountDetail(account2->accountId(), "", account->accountId())
+              .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::AccountDetailResponse>(),
+            result->get());
+
+        ASSERT_EQ(
+            cast_resp.detail(),
+            "{\"id@domain\" : {\"key\": \"value\", \"key2\": \"value2\"}}");
+      });
+    }
+
+    TEST_F(GetAccountDetailExecutorTest,
+           GetAccountDetailExecutorTestValidKeyWriter) {
+      addPerms({shared_model::interface::permissions::Role::kGetAllAccDetail});
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getAccountDetail(
+                           account2->accountId(), "key", account->accountId())
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::AccountDetailResponse>(),
+            result->get());
+
+        ASSERT_EQ(cast_resp.detail(),
+                  "{\"id@domain\" : {\"key\" : \"value\"}}");
+      });
+    }
+
+    class GetRolesExecutorTest : public QueryExecutorTest {
+     public:
+      void SetUp() override {
+        QueryExecutorTest::SetUp();
+      }
+    };
+
+    TEST_F(GetRolesExecutorTest, GetRolesExecutorTestValid) {
+      addPerms({shared_model::interface::permissions::Role::kGetRoles});
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getRoles()
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+        const auto &cast_resp =
+            boost::apply_visitor(framework::SpecifiedVisitor<
+                                     shared_model::interface::RolesResponse>(),
+                                 result->get());
+
+        ASSERT_EQ(cast_resp.roles().size(), 2);
+        ASSERT_EQ(cast_resp.roles()[0], "role");
+        ASSERT_EQ(cast_resp.roles()[1], "perms");
+      });
+    }
+
+    TEST_F(GetRolesExecutorTest, GetRolesExecutorTestInvalid) {
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getRoles()
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_TRUE(boost::apply_visitor(
+          shared_model::interface::QueryErrorResponseChecker<
+              shared_model::interface::StatefulFailedErrorResponse>(),
+          result->get()));
+    }
+
+    class GetRolePermsExecutorTest : public QueryExecutorTest {
+     public:
+      void SetUp() override {
+        QueryExecutorTest::SetUp();
+      }
+    };
+
+    TEST_F(GetRolePermsExecutorTest, GetRolePermsExecutorTestValid) {
+      addPerms({shared_model::interface::permissions::Role::kGetRoles});
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getRolePermissions("perms")
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::RolePermissionsResponse>(),
+            result->get());
+
+        ASSERT_TRUE(cast_resp.rolePermissions().test(
+            shared_model::interface::permissions::Role::kGetRoles));
+      });
+    }
+
+    TEST_F(GetRolePermsExecutorTest, GetRolePermsExecutorTestInvalidNoRole) {
+      addPerms({shared_model::interface::permissions::Role::kGetRoles});
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getRolePermissions("some")
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_TRUE(boost::apply_visitor(
+          shared_model::interface::QueryErrorResponseChecker<
+              shared_model::interface::NoRolesErrorResponse>(),
+          result->get()));
+    }
+
+    TEST_F(GetRolePermsExecutorTest, GetRolePermsExecutorTestInvalid) {
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getRolePermissions("role")
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_TRUE(boost::apply_visitor(
+          shared_model::interface::QueryErrorResponseChecker<
+              shared_model::interface::StatefulFailedErrorResponse>(),
+          result->get()));
+    }
+
+    class GetAssetInfoExecutorTest : public QueryExecutorTest {
+     public:
+      void SetUp() override {
+        QueryExecutorTest::SetUp();
+      }
+
+      void createAsset() {
+        ASSERT_TRUE(
+            val(execute(buildCommand(TestTransactionBuilder().createAsset(
+                "coin", domain->domainId(), 1)),
+                        true)));
+      }
+      const std::string asset_id = "coin#domain";
+    };
+
+    TEST_F(GetAssetInfoExecutorTest, GetAssetInfoExecutorTestValid) {
+      addPerms({shared_model::interface::permissions::Role::kReadAssets});
+      createAsset();
+      auto query = TestQueryBuilder()
+          .creatorAccountId(account->accountId())
+          .getAssetInfo(asset_id)
+          .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+                        const auto &cast_resp = boost::apply_visitor(
+                            framework::SpecifiedVisitor<
+                                shared_model::interface::AssetResponse>(),
+                            result->get());
+
+                        ASSERT_EQ(cast_resp.asset().assetId(), asset_id);
+                        ASSERT_EQ(cast_resp.asset().domainId(), domain->domainId());
+                        ASSERT_EQ(cast_resp.asset().precision(), 1);
+                      });
+    }
+
+    TEST_F(GetAssetInfoExecutorTest, GetAssetInfoExecutorTestInvalidNoAsset) {
+      addPerms({shared_model::interface::permissions::Role::kReadAssets});
+      auto query = TestQueryBuilder()
+          .creatorAccountId(account->accountId())
+          .getAssetInfo("some#domain")
+          .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_TRUE(boost::apply_visitor(
+          shared_model::interface::QueryErrorResponseChecker<
+              shared_model::interface::NoAssetErrorResponse>(),
+          result->get()));
+    }
+
+    TEST_F(GetAssetInfoExecutorTest, GetAssetInfoExecutorTestInvalid) {
+      auto query = TestQueryBuilder()
+          .creatorAccountId(account->accountId())
+          .getAssetInfo(asset_id)
+          .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_TRUE(boost::apply_visitor(
+          shared_model::interface::QueryErrorResponseChecker<
+              shared_model::interface::StatefulFailedErrorResponse>(),
           result->get()));
     }
   }  // namespace ametsuchi
