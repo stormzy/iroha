@@ -41,7 +41,7 @@ namespace iroha {
     using QueryResponseBuilderDone =
         shared_model::proto::TemplateQueryResponseBuilder<1>;
     class PostgresQueryExecutorVisitor
-        : public boost::static_visitor<QueryExecutorResult> {
+        : public boost::static_visitor<QueryResponseBuilderDone> {
      public:
       PostgresQueryExecutorVisitor(
           soci::session &sql,
@@ -51,37 +51,37 @@ namespace iroha {
       void setCreatorId(
           const shared_model::interface::types::AccountIdType &creator_id);
 
-      QueryExecutorResult operator()(
+      QueryResponseBuilderDone operator()(
           const shared_model::interface::GetAccount &q);
 
-      QueryExecutorResult operator()(
+      QueryResponseBuilderDone operator()(
           const shared_model::interface::GetSignatories &q);
 
-      QueryExecutorResult operator()(
+      QueryResponseBuilderDone operator()(
           const shared_model::interface::GetAccountTransactions &q);
 
-      QueryExecutorResult operator()(
+      QueryResponseBuilderDone operator()(
           const shared_model::interface::GetTransactions &q);
 
-      QueryExecutorResult operator()(
+      QueryResponseBuilderDone operator()(
           const shared_model::interface::GetAccountAssetTransactions &q);
 
-      QueryExecutorResult operator()(
+      QueryResponseBuilderDone operator()(
           const shared_model::interface::GetAccountAssets &q);
 
-      QueryExecutorResult operator()(
+      QueryResponseBuilderDone operator()(
           const shared_model::interface::GetAccountDetail &q);
 
-      QueryExecutorResult operator()(
+      QueryResponseBuilderDone operator()(
           const shared_model::interface::GetRoles &q);
 
-      QueryExecutorResult operator()(
+      QueryResponseBuilderDone operator()(
           const shared_model::interface::GetRolePermissions &q);
 
-      QueryExecutorResult operator()(
+      QueryResponseBuilderDone operator()(
           const shared_model::interface::GetAssetInfo &q);
 
-      QueryExecutorResult operator()(
+      QueryResponseBuilderDone operator()(
           const shared_model::interface::GetPendingTransactions &q);
 
      private:
