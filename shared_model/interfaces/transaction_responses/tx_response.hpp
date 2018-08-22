@@ -12,6 +12,7 @@
 #include "interfaces/transaction.hpp"
 #include "interfaces/transaction_responses/committed_tx_response.hpp"
 #include "interfaces/transaction_responses/mst_expired_response.hpp"
+#include "interfaces/transaction_responses/mst_passed_response.hpp"
 #include "interfaces/transaction_responses/mst_pending_response.hpp"
 #include "interfaces/transaction_responses/not_received_tx_response.hpp"
 #include "interfaces/transaction_responses/stateful_failed_tx_response.hpp"
@@ -40,7 +41,8 @@ namespace shared_model {
                                        CommittedTxResponse,
                                        MstExpiredResponse,
                                        NotReceivedTxResponse,
-                                       MstPendingResponse>;
+                                       MstPendingResponse,
+                                       MstPassedResponse>;
 
       /// Type with list of types in ResponseVariantType
       using ResponseListType = ResponseVariantType::types;

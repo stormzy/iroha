@@ -14,6 +14,7 @@
 #include "interfaces/transaction_responses/stateless_failed_tx_response.hpp"
 #include "interfaces/transaction_responses/stateless_valid_tx_response.hpp"
 #include "interfaces/transaction_responses/tx_response.hpp"
+#include "interfaces/transaction_responses/mst_passed_response.hpp"
 
 namespace shared_model {
   namespace proto {
@@ -36,6 +37,8 @@ namespace shared_model {
     using NotReceivedTxResponse = TrivialProto<interface::NotReceivedTxResponse,
                                                iroha::protocol::ToriiResponse>;
     using MstPendingResponse = TrivialProto<interface::MstPendingResponse,
+                                            iroha::protocol::ToriiResponse>;
+    using MstPassedResponse = TrivialProto<interface::MstPassedResponse,
                                             iroha::protocol::ToriiResponse>;
   }  // namespace proto
 }  // namespace shared_model

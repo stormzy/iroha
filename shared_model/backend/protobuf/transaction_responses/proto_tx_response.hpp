@@ -31,7 +31,6 @@ namespace shared_model {
         : public CopyableProto<interface::TransactionResponse,
                                iroha::protocol::ToriiResponse,
                                TransactionResponse> {
-     private:
      public:
       /// Type of variant, that handle all concrete tx responses in the system
       using ProtoResponseVariantType = boost::variant<StatelessFailedTxResponse,
@@ -41,7 +40,8 @@ namespace shared_model {
                                                       CommittedTxResponse,
                                                       MstExpiredResponse,
                                                       NotReceivedTxResponse,
-                                                      MstPendingResponse>;
+                                                      MstPendingResponse,
+                                                      MstPassedResponse>;
 
       /// Type with list of types in ResponseVariantType
       using ProtoResponseListType = ProtoResponseVariantType::types;
@@ -69,6 +69,23 @@ namespace shared_model {
       const ResponseVariantType &get() const override {
         return *ivariant_;
       }
+
+      /**
+       * Compare priorities of two transaction responses
+       * @param other response
+       * @return:
+       *    - -1, if this response's priority is less, than other's
+       *    - 0, if it's equal
+       *    - 1, if it's greater
+       */
+      int comparePriorities(const TransactionResponse &other) const noexcept {
+        if (this->priority() < other.priority()) {
+          return -1;
+        } else if (this->priority() == other.priority()) {
+          return 0;
+        }
+        return 1;
+      };
 
      private:
       template <typename T>
@@ -101,6 +118,23 @@ namespace shared_model {
       // stub hash
       const Lazy<crypto::Hash> hash_{
           [this] { return crypto::Hash(this->proto_->tx_hash()); }};
+
+      /**
+       * @return priority this transaction response
+       */
+      int priority() const noexcept {
+        return iroha::visit_in_place(
+            get(),
+            [](const StatelessValidTxResponse &) { return 1; },
+            [](const MstPendingResponse &) { return 2; },
+            [](const MstPassedResponse &) { return 3; },
+            [](const StatefulValidTxResponse &) { return 4; },
+            [](const CommittedTxResponse &) { return 5; },
+            [](const StatelessFailedTxResponse &) { return 6; },
+            [](const StatefulFailedTxResponse &) { return 7; },
+            [](const MstExpiredResponse &) { return 8; },
+            [](const NotReceivedTxResponse &) { return 9; });
+      }
     };
   }  // namespace  proto
 }  // namespace shared_model

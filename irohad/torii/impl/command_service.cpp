@@ -56,11 +56,10 @@ namespace torii {
       auto tx_hash = proto_response->transactionHash();
       auto cached_tx_state = cache_->findItem(tx_hash);
       if (cached_tx_state
-          and proto_response->getTransport().tx_status()
-              <= cached_tx_state->tx_status()) {
+          and proto_response.comparePriorities(cached_tx_state) <= 0) {
         return;
       }
-      cache_->addItem(tx_hash, proto_response->getTransport());
+      cache_->addItem(tx_hash, proto_response);
     });
   }
 
@@ -218,13 +217,15 @@ namespace torii {
     auto tx_hash = shared_model::crypto::Hash(request.tx_hash());
     auto resp = cache_->findItem(tx_hash);
     if (resp) {
-      response.CopyFrom(*resp);
+      response.CopyFrom(resp->getTransport());
     } else {
       response.set_tx_hash(request.tx_hash());
       auto hash = shared_model::crypto::Hash(request.tx_hash());
       if (storage_->getBlockQuery()->hasTxWithHash(hash)) {
         response.set_tx_status(iroha::protocol::TxStatus::COMMITTED);
-        cache_->addItem(std::move(hash), response);
+        cache_->addItem(
+            std::move(hash),
+            shared_model::proto::TransactionResponse(std::move(response)));
       } else {
         log_->warn("Asked non-existing tx: {}",
                    iroha::bytestringToHexstring(request.tx_hash()));

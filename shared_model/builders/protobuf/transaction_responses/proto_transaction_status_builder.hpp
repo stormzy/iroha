@@ -34,6 +34,8 @@ namespace shared_model {
 
       TransactionStatusBuilder mstPending();
 
+      TransactionStatusBuilder mstPassed();
+
       TransactionStatusBuilder statefulValidationSuccess();
 
       TransactionStatusBuilder statefulValidationFailed();
