@@ -97,6 +97,10 @@ addtest(get_roles_test get_roles_test.cpp)
 target_link_libraries(get_roles_test
     acceptance_fixture
     )
+addtest(queries_acceptance_tests queries_acceptance_tests.cpp)
+target_link_libraries(queries_acceptance_tests
+    acceptance_fixture
+    )
 
 addtest(create_asset_test create_asset_test.cpp)
 target_link_libraries(create_asset_test
