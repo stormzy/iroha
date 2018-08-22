@@ -227,8 +227,7 @@ namespace iroha {
                                                         tuple.get<3>().get()));
 
       if (not account) {
-        // fix it
-        return buildError<shared_model::interface::NoAccountErrorResponse>();
+        return statefulFailed();
       }
 
       auto response = QueryResponseBuilder().accountResponse(
@@ -291,6 +290,33 @@ namespace iroha {
 
     QueryResponseBuilderDone PostgresQueryExecutorVisitor::operator()(
         const shared_model::interface::GetAccountTransactions &q) {
+      soci::indicator ind;
+      boost::tuple<boost::optional<std::string>, int> row;
+      auto cmd = (boost::format(R"(WITH has_perms AS (%s),
+      t AS (
+          SELECT account_id FROM account_has_signatory
+          WHERE account_id = :account_id
+      )
+      SELECT account_id, perm FROM t
+      RIGHT OUTER JOIN has_perms ON TRUE
+      )")
+          % hasQueryPermission(creator_id_,
+                               q.accountId(),
+                               Role::kGetMyAccTxs,
+                               Role::kGetAllAccTxs,
+                               Role::kGetDomainAccTxs))
+          .str();
+      soci::statement st = (sql_.prepare << cmd);
+      st.exchange(soci::use(q.accountId()));
+      st.exchange(soci::into(row, ind));
+
+      st.define_and_bind();
+      st.execute();
+
+      int has_perm = -1;
+
+
+
       return statefulFailed();
     }
 

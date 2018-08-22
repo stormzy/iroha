@@ -8,6 +8,7 @@
 
 #include "ametsuchi/query_executor.hpp"
 
+#include "ametsuchi/key_value_storage.hpp"
 #include "ametsuchi/impl/soci_utils.hpp"
 #include "ametsuchi/storage.hpp"
 #include "builders/protobuf/builder_templates/query_response_template.hpp"
@@ -86,6 +87,7 @@ namespace iroha {
 
      private:
       soci::session &sql_;
+      KeyValueStorage &block_store_;
       shared_model::interface::types::AccountIdType creator_id_;
       std::shared_ptr<shared_model::interface::CommonObjectsFactory> factory_;
     };
@@ -96,7 +98,8 @@ namespace iroha {
           std::shared_ptr<ametsuchi::Storage> storage,
           soci::session &sql,
           std::shared_ptr<shared_model::interface::CommonObjectsFactory>
-              factory);
+              factory,
+          KeyValueStorage &block_store);
 
       QueryExecutorResult validateAndExecute(
           const shared_model::interface::Query &query) override;
@@ -106,6 +109,7 @@ namespace iroha {
      private:
       std::shared_ptr<ametsuchi::Storage> storage_;
       soci::session &sql_;
+      KeyValueStorage &block_store_;
       std::shared_ptr<shared_model::interface::CommonObjectsFactory> factory_;
       PostgresQueryExecutorVisitor visitor_;
     };

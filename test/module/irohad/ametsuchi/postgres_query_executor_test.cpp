@@ -794,7 +794,7 @@ namespace iroha {
       void createAsset() {
         ASSERT_TRUE(
             val(execute(buildCommand(TestTransactionBuilder().createAsset(
-                "coin", domain->domainId(), 1)),
+                            "coin", domain->domainId(), 1)),
                         true)));
       }
       const std::string asset_id = "coin#domain";
@@ -804,28 +804,28 @@ namespace iroha {
       addPerms({shared_model::interface::permissions::Role::kReadAssets});
       createAsset();
       auto query = TestQueryBuilder()
-          .creatorAccountId(account->accountId())
-          .getAssetInfo(asset_id)
-          .build();
+                       .creatorAccountId(account->accountId())
+                       .getAssetInfo(asset_id)
+                       .build();
       auto result = query_executor->validateAndExecute(query);
       ASSERT_NO_THROW({
-                        const auto &cast_resp = boost::apply_visitor(
-                            framework::SpecifiedVisitor<
-                                shared_model::interface::AssetResponse>(),
-                            result->get());
+        const auto &cast_resp =
+            boost::apply_visitor(framework::SpecifiedVisitor<
+                                     shared_model::interface::AssetResponse>(),
+                                 result->get());
 
-                        ASSERT_EQ(cast_resp.asset().assetId(), asset_id);
-                        ASSERT_EQ(cast_resp.asset().domainId(), domain->domainId());
-                        ASSERT_EQ(cast_resp.asset().precision(), 1);
-                      });
+        ASSERT_EQ(cast_resp.asset().assetId(), asset_id);
+        ASSERT_EQ(cast_resp.asset().domainId(), domain->domainId());
+        ASSERT_EQ(cast_resp.asset().precision(), 1);
+      });
     }
 
     TEST_F(GetAssetInfoExecutorTest, GetAssetInfoExecutorTestInvalidNoAsset) {
       addPerms({shared_model::interface::permissions::Role::kReadAssets});
       auto query = TestQueryBuilder()
-          .creatorAccountId(account->accountId())
-          .getAssetInfo("some#domain")
-          .build();
+                       .creatorAccountId(account->accountId())
+                       .getAssetInfo("some#domain")
+                       .build();
       auto result = query_executor->validateAndExecute(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
@@ -835,9 +835,9 @@ namespace iroha {
 
     TEST_F(GetAssetInfoExecutorTest, GetAssetInfoExecutorTestInvalid) {
       auto query = TestQueryBuilder()
-          .creatorAccountId(account->accountId())
-          .getAssetInfo(asset_id)
-          .build();
+                       .creatorAccountId(account->accountId())
+                       .getAssetInfo(asset_id)
+                       .build();
       auto result = query_executor->validateAndExecute(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
