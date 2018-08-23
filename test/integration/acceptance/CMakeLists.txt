@@ -98,8 +98,8 @@ target_link_libraries(get_roles_test
     acceptance_fixture
     )
 
-addtest(queries_acceptance_tests queries_acceptance_tests.cpp)
-target_link_libraries(queries_acceptance_tests
+addtest(queries_acceptance_test queries_acceptance_test.cpp)
+target_link_libraries(queries_acceptance_test
     acceptance_fixture
     )
 

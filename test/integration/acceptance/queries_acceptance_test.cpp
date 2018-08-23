@@ -4,6 +4,7 @@
  */
 
 #include <gtest/gtest.h>
+
 #include "backend/protobuf/transaction.hpp"
 #include "framework/integration_framework/integration_test_framework.hpp"
 #include "framework/specified_visitor.hpp"
@@ -13,17 +14,24 @@
 using namespace integration_framework;
 using namespace shared_model;
 
-class QueriesAcceptanceTests : public AcceptanceFixture {
+class QueriesAcceptanceTest : public AcceptanceFixture {
  public:
-  QueriesAcceptanceTests()
+  QueriesAcceptanceTest()
       : invalidPrivateKey(kUserKeypair.privateKey().hex()),
         invalidPublicKey(kUserKeypair.publicKey().hex()) {
-    invalidPrivateKey[0] == '9' || invalidPrivateKey[0] == 'f'
-        ? invalidPrivateKey[0] = --invalidPrivateKey[0]
-        : invalidPrivateKey[0] = ++invalidPrivateKey[0];
-    invalidPublicKey[0] == '9' || invalidPublicKey[0] == 'f'
-        ? invalidPublicKey[0] = --invalidPublicKey[0]
-        : invalidPublicKey[0] = ++invalidPublicKey[0];
+    /*
+     * It's deliberately get broken the public key and privite key to simulate a
+     * non-valid signature and public key and use their combinations in the
+     * tests below
+     * Both keys are hex values represented as a std::string so
+     * characters can be values only in the range 0-9 and a-f
+     */
+    invalidPrivateKey[0] == '9' or invalidPrivateKey[0] == 'f'
+        ? --invalidPrivateKey[0]
+        : ++invalidPrivateKey[0];
+    invalidPublicKey[0] == '9' or invalidPublicKey[0] == 'f'
+        ? --invalidPublicKey[0]
+        : ++invalidPublicKey[0];
   };
   std::string invalidPrivateKey;
   std::string invalidPublicKey;
@@ -36,7 +44,7 @@ class QueriesAcceptanceTests : public AcceptanceFixture {
  * @when execute any correct query with needed permitions
  * @then the query should not pass stateful validation
  */
-TEST_F(QueriesAcceptanceTests, NonExistentCreatorId) {
+TEST_F(QueriesAcceptanceTest, NonExistentCreatorId) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW({
       boost::apply_visitor(
@@ -74,7 +82,7 @@ TEST_F(QueriesAcceptanceTests, NonExistentCreatorId) {
  * @when execute any correct query with needed permitions
  * @then the query returns list of roles
  */
-TEST_F(QueriesAcceptanceTests, OneHourOldTime) {
+TEST_F(QueriesAcceptanceTest, OneHourOldTime) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW(boost::apply_visitor(
         framework::SpecifiedVisitor<shared_model::interface::RolesResponse>(),
@@ -105,7 +113,7 @@ TEST_F(QueriesAcceptanceTests, OneHourOldTime) {
  * @when execute any correct query with needed permitions
  * @then the query should not pass stateless validation
  */
-TEST_F(QueriesAcceptanceTests, More24HourOldTime) {
+TEST_F(QueriesAcceptanceTest, More24HourOldTime) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW({
       boost::apply_visitor(
@@ -144,7 +152,7 @@ TEST_F(QueriesAcceptanceTests, More24HourOldTime) {
  * @when execute any correct query with needed permitions
  * @then the query should not pass stateless validation
  */
-TEST_F(QueriesAcceptanceTests, TwentyFourHourOldTime) {
+TEST_F(QueriesAcceptanceTest, TwentyFourHourOldTime) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW({
       boost::apply_visitor(
@@ -182,7 +190,7 @@ TEST_F(QueriesAcceptanceTests, TwentyFourHourOldTime) {
  * @when execute any correct query with needed permitions
  * @then the query returns list of roles
  */
-TEST_F(QueriesAcceptanceTests, Less24HourOldTime) {
+TEST_F(QueriesAcceptanceTest, Less24HourOldTime) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW(boost::apply_visitor(
         framework::SpecifiedVisitor<shared_model::interface::RolesResponse>(),
@@ -214,7 +222,7 @@ TEST_F(QueriesAcceptanceTests, Less24HourOldTime) {
  * @when execute any correct query with needed permitions
  * @then the query returns list of roles
  */
-TEST_F(QueriesAcceptanceTests, LessFiveMinutesFromFuture) {
+TEST_F(QueriesAcceptanceTest, LessFiveMinutesFromFuture) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW(boost::apply_visitor(
         framework::SpecifiedVisitor<shared_model::interface::RolesResponse>(),
@@ -246,7 +254,7 @@ TEST_F(QueriesAcceptanceTests, LessFiveMinutesFromFuture) {
  * @when execute any correct query with needed permitions
  * @then the query returns list of roles
  */
-TEST_F(QueriesAcceptanceTests, FiveMinutesFromFuture) {
+TEST_F(QueriesAcceptanceTest, FiveMinutesFromFuture) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW(boost::apply_visitor(
         framework::SpecifiedVisitor<shared_model::interface::RolesResponse>(),
@@ -277,7 +285,7 @@ TEST_F(QueriesAcceptanceTests, FiveMinutesFromFuture) {
  * @when execute any correct query with needed permitions
  * @then the query should not pass stateless validation
  */
-TEST_F(QueriesAcceptanceTests, MoreFiveMinutesFromFuture) {
+TEST_F(QueriesAcceptanceTest, MoreFiveMinutesFromFuture) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW({
       boost::apply_visitor(
@@ -316,7 +324,7 @@ TEST_F(QueriesAcceptanceTests, MoreFiveMinutesFromFuture) {
  * @when execute any correct query with needed permitions
  * @then the query should not pass stateless validation
  */
-TEST_F(QueriesAcceptanceTests, TenMinutesFromFuture) {
+TEST_F(QueriesAcceptanceTest, TenMinutesFromFuture) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW({
       boost::apply_visitor(
@@ -354,7 +362,7 @@ TEST_F(QueriesAcceptanceTests, TenMinutesFromFuture) {
  * @when execute any correct query with needed permitions
  * @then the query should not pass stateless validation
  */
-TEST_F(QueriesAcceptanceTests, InvalidSignValidPubKeypair) {
+TEST_F(QueriesAcceptanceTest, InvalidSignValidPubKeypair) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW({
       boost::apply_visitor(
@@ -396,7 +404,7 @@ TEST_F(QueriesAcceptanceTests, InvalidSignValidPubKeypair) {
  * @when execute any correct query with needed permitions
  * @then the query should not pass stateless validation
  */
-TEST_F(QueriesAcceptanceTests, ValidSignInvalidPubKeypair) {
+TEST_F(QueriesAcceptanceTest, ValidSignInvalidPubKeypair) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW({
       boost::apply_visitor(
@@ -438,7 +446,7 @@ TEST_F(QueriesAcceptanceTests, ValidSignInvalidPubKeypair) {
  * @when execute any correct query with needed permitions
  * @then the query should not pass stateless validation
  */
-TEST_F(QueriesAcceptanceTests, FullyInvalidKeypair) {
+TEST_F(QueriesAcceptanceTest, FullyInvalidKeypair) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW({
       boost::apply_visitor(
@@ -480,7 +488,7 @@ TEST_F(QueriesAcceptanceTests, FullyInvalidKeypair) {
  * @when execute any correct query with needed permitions
  * @then the query should not pass stateless validation
  */
-TEST_F(QueriesAcceptanceTests, EmptySignValidPubKeypair) {
+TEST_F(QueriesAcceptanceTest, EmptySignValidPubKeypair) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW({
       boost::apply_visitor(
@@ -522,7 +530,7 @@ TEST_F(QueriesAcceptanceTests, EmptySignValidPubKeypair) {
  * @when execute any correct query with needed permitions
  * @then the query should not pass stateless validation
  */
-TEST_F(QueriesAcceptanceTests, ValidSignEmptyPubKeypair) {
+TEST_F(QueriesAcceptanceTest, ValidSignEmptyPubKeypair) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW({
       boost::apply_visitor(
@@ -564,7 +572,7 @@ TEST_F(QueriesAcceptanceTests, ValidSignEmptyPubKeypair) {
  * @when execute any correct query with needed permitions
  * @then the query should not pass stateless validation
  */
-TEST_F(QueriesAcceptanceTests, FullyEmptyPubKeypair) {
+TEST_F(QueriesAcceptanceTest, FullyEmptyPubKeypair) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW({
       boost::apply_visitor(
@@ -607,7 +615,7 @@ TEST_F(QueriesAcceptanceTests, FullyEmptyPubKeypair) {
  * @when execute any correct query with needed permitions
  * @then the query should not pass stateless validation
  */
-TEST_F(QueriesAcceptanceTests, InvalidSignEmptyPubKeypair) {
+TEST_F(QueriesAcceptanceTest, InvalidSignEmptyPubKeypair) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW({
       boost::apply_visitor(
@@ -653,7 +661,7 @@ TEST_F(QueriesAcceptanceTests, InvalidSignEmptyPubKeypair) {
  * @when execute any correct query with needed permitions
  * @then the query should not pass stateless validation
  */
-TEST_F(QueriesAcceptanceTests, EmptySignInvalidPubKeypair) {
+TEST_F(QueriesAcceptanceTest, EmptySignInvalidPubKeypair) {
   auto checkQuery = [](auto &queryResponse) {
     ASSERT_NO_THROW({
       boost::apply_visitor(
