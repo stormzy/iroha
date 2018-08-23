@@ -34,7 +34,7 @@ Installation on Ubuntu
 CMake
 -----
 
-Minimum required version is 3.11.2, but we recommend to install the latest available version (3.12.0 at the moment).
+Minimum required version is 3.11.4, but we recommend to install the latest available version (3.12.0 at the moment).
 
 Installation on Ubuntu
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -44,14 +44,14 @@ Here is how to build and install CMake from sources.
 
 .. code-block:: shell
 
-    wget https://cmake.org/files/v3.11/cmake-3.11.2.tar.gz
-    tar -xvzf cmake-3.11.2.tar.gz
-    cd cmake-3.11.2/
+    wget https://cmake.org/files/v3.11/cmake-3.11.4.tar.gz
+    tar -xvzf cmake-3.11.4.tar.gz
+    cd cmake-3.11.4/
     ./configure
     make
     sudo make install
     cmake --version
-    # cmake version 3.11.2
+    # cmake version 3.11.4
 
 Installation on macOS
 ^^^^^^^^^^^^^^^^^^^^^
@@ -60,7 +60,7 @@ Installation on macOS
 
     brew install cmake
     cmake --version
-    # cmake version 3.11.2
+    # cmake version 3.12.1
 
 Git
 ---
