@@ -31,25 +31,26 @@ namespace iroha {
       OnDemandOrderingServiceImpl(
           size_t transaction_limit,
           size_t number_of_proposals = 3,
-          const transport::RoundType &initial_round = std::make_pair(1, 1));
+          const transport::RoundType &initial_round = std::make_pair(2, 1));
 
       // --------------------- | OnDemandOrderingService |_---------------------
 
-      void onCollaborationOutcome(RoundOutput outcome) override;
+      void onCollaborationOutcome(transport::RoundType round) override;
 
       // ----------------------- | OdOsNotification | --------------------------
 
-      void onTransactions(CollectionType transactions) override;
+      void onTransactions(transport::RoundType,
+                          CollectionType transactions) override;
 
       boost::optional<ProposalType> onRequestProposal(
           transport::RoundType round) override;
 
      private:
       /**
-       * Packs new proposal and creates new round
+       * Packs new proposals and creates new rounds
        * Note: method is not thread-safe
        */
-      void packNextProposal(RoundOutput outcome);
+      void packNextProposals(transport::RoundType round);
 
       /**
        * Removes last elements if it is required
@@ -59,10 +60,10 @@ namespace iroha {
       void tryErase();
 
       /**
-       * @return packed proposal from current round queue
+       * @return packed proposal from the given round queue
        * Note: method is not thread-safe
        */
-      ProposalType emitProposal();
+      ProposalType emitProposal(transport::RoundType round);
 
       /**
        * Max number of transaction in one proposal
@@ -88,10 +89,12 @@ namespace iroha {
           proposal_map_;
 
       /**
-       * Proposal for current round
+       * Proposals for current rounds
        */
-      std::pair<transport::RoundType, tbb::concurrent_queue<TransactionType>>
-          current_proposal_;
+      std::unordered_map<transport::RoundType,
+                         tbb::concurrent_queue<TransactionType>,
+                         transport::RoundTypeHasher>
+          current_proposals_;
 
       /**
        * Read write mutex for public methods
@@ -105,4 +108,5 @@ namespace iroha {
     };
   }  // namespace ordering
 }  // namespace iroha
+
 #endif  // IROHA_ON_DEMAND_ORDERING_SERVICE_IMPL_HPP

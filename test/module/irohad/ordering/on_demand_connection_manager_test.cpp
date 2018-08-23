@@ -73,13 +73,21 @@ TEST_F(OnDemandConnectionManagerTest, FactoryUsed) {
  */
 TEST_F(OnDemandConnectionManagerTest, onTransactions) {
   OdOsNotification::CollectionType collection;
-  for (auto peer_type : {OnDemandConnectionManager::kPreviousConsumer,
-                         OnDemandConnectionManager::kCurrentFirstConsumer,
-                         OnDemandConnectionManager::kCurrentSecondConsumer}) {
-    EXPECT_CALL(*connections[peer_type], onTransactions(collection)).Times(1);
+  RoundType round{1, 1};
+  const OnDemandConnectionManager::PeerType types[] = {
+      OnDemandConnectionManager::kCurrentRoundRejectConsumer,
+      OnDemandConnectionManager::kNextRoundRejectConsumer,
+      OnDemandConnectionManager::kNextRoundCommitConsumer};
+  const transport::RoundType rounds[] = {{round.first, round.second + 2},
+                                         {round.first + 1, 2},
+                                         {round.first + 2, 1}};
+  for (auto &&pair : boost::combine(types, rounds)) {
+    EXPECT_CALL(*connections[boost::get<0>(pair)],
+                onTransactions(boost::get<1>(pair), collection))
+        .Times(1);
   }
 
-  manager->onTransactions(collection);
+  manager->onTransactions(round, collection);
 }
 
 /**

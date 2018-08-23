@@ -25,13 +25,21 @@ OnDemandConnectionManager::OnDemandConnectionManager(
   initializeConnections(initial_peers);
 }
 
-void OnDemandConnectionManager::onTransactions(CollectionType transactions) {
+void OnDemandConnectionManager::onTransactions(transport::RoundType round,
+                                               CollectionType transactions) {
   // shared lock
   std::shared_lock<std::shared_timed_mutex> lock(mutex_);
 
-  for (auto peer_type :
-       {kPreviousConsumer, kCurrentFirstConsumer, kCurrentSecondConsumer}) {
-    connections_.peers[peer_type]->onTransactions(transactions);
+  const PeerType types[] = {kCurrentRoundRejectConsumer,
+                        kNextRoundRejectConsumer,
+                        kNextRoundCommitConsumer};
+  const transport::RoundType rounds[] = {{round.first, round.second + 2},
+                                         {round.first + 1, 2},
+                                         {round.first + 2, 1}};
+
+  for (auto &&pair : boost::combine(types, rounds)) {
+    connections_.peers[boost::get<0>(pair)]->onTransactions(boost::get<1>(pair),
+                                                            transactions);
   }
 }
 
