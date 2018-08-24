@@ -10,6 +10,7 @@
 #include "framework/specified_visitor.hpp"
 #include "integration/acceptance/acceptance_fixture.hpp"
 #include "interfaces/permissions.hpp"
+#include "utils/query_error_response_visitor.hpp"
 
 using namespace integration_framework;
 using namespace shared_model;
@@ -17,7 +18,8 @@ using namespace shared_model;
 class QueriesAcceptanceTest : public AcceptanceFixture {
  public:
   QueriesAcceptanceTest()
-      : invalidPrivateKey(kUserKeypair.privateKey().hex()),
+      : itf(1),
+        invalidPrivateKey(kUserKeypair.privateKey().hex()),
         invalidPublicKey(kUserKeypair.publicKey().hex()) {
     /*
      * It's deliberately get broken the public key and privite key to simulate a
@@ -33,33 +35,61 @@ class QueriesAcceptanceTest : public AcceptanceFixture {
         ? --invalidPublicKey[0]
         : ++invalidPublicKey[0];
   };
+  void SetUp() {
+    itf.setInitialState(kAdminKeypair)
+        .sendTx(makeUserWithPerms({interface::permissions::Role::kGetRoles}))
+        .skipProposal()
+        .checkBlock([](auto &block) {
+          ASSERT_EQ(boost::size(block->transactions()), 1);
+        });
+  };
+
+  template<typename F>
+  auto checkIfStatefulFailed(F& queryResponse)
+  {
+    ASSERT_TRUE(
+        boost::apply_visitor(interface::QueryErrorResponseChecker<
+                                 interface::StatefulFailedErrorResponse>(),
+                             queryResponse.get()))
+                  << "Actual response: " << queryResponse.toString();
+  };
+  —
+  template<typename F>
+  auto checkIfStatelessFailed(F& queryResponse)
+  {
+    ASSERT_TRUE(
+        boost::apply_visitor(interface::QueryErrorResponseChecker<
+                                 interface::StatelessFailedErrorResponse>(),
+                             queryResponse.get()))
+                  << "Actual response: " << queryResponse.toString();
+  };
+
+
+  template<typename F>
+  auto checkIfSuccess(F& queryResponse)
+  {
+    ASSERT_NO_THROW(boost::apply_visitor(
+        framework::SpecifiedVisitor<interface::RolesResponse>(),
+        queryResponse.get()));
+
+  }
+
+  IntegrationTestFramework itf;
   std::string invalidPrivateKey;
   std::string invalidPublicKey;
-
   const std::string NonExistentUserId = "aaaa@aaaa";
 };
 
 /**
  * @given query with a non-existent creator_account_id
- * @when execute any correct query with needed permitions
+ * @when execute any correct query with kGetRoles permissions
  * @then the query should not pass stateful validation
  */
 TEST_F(QueriesAcceptanceTest, NonExistentCreatorId) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW({
-      boost::apply_visitor(
-          framework::SpecifiedVisitor<
-              shared_model::interface::StatefulFailedErrorResponse>(),
-          boost::apply_visitor(
-              framework::SpecifiedVisitor<
-                  shared_model::interface::ErrorQueryResponse>(),
-              queryResponse.get())
-              .get());
-    });
-  };
 
-  auto query = TestUnsignedQueryBuilder()
-                   .createdTime(iroha::time::now())
+  auto check = [this](auto &queryResponse){checkIfStatefulFailed(queryResponse);};
+
+  auto query = baseQry()
                    .creatorAccountId(NonExistentUserId)
                    .queryCounter(1)
                    .getRoles()
@@ -67,27 +97,17 @@ TEST_F(QueriesAcceptanceTest, NonExistentCreatorId) {
                    .signAndAddSignature(kUserKeypair)
                    .finish();
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(boost::size(block->transactions()), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
 
 /**
  * @given query with an 1 hour old UNIX time
- * @when execute any correct query with needed permitions
+ * @when execute any correct query with kGetRoles permissions
  * @then the query returns list of roles
  */
 TEST_F(QueriesAcceptanceTest, OneHourOldTime) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW(boost::apply_visitor(
-        framework::SpecifiedVisitor<shared_model::interface::RolesResponse>(),
-        queryResponse.get()));
-  };
+
+  auto check = [this](auto &queryResponse){checkIfSuccess(queryResponse);};
 
   auto query = TestUnsignedQueryBuilder()
                    .createdTime(iroha::time::now(std::chrono::hours(-1)))
@@ -98,34 +118,17 @@ TEST_F(QueriesAcceptanceTest, OneHourOldTime) {
                    .signAndAddSignature(kUserKeypair)
                    .finish();
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
 
 /**
  * @given query with more than 24 hour old UNIX time
- * @when execute any correct query with needed permitions
+ * @when execute any correct query with kGetRoles permissions
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, More24HourOldTime) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW({
-      boost::apply_visitor(
-          framework::SpecifiedVisitor<
-              shared_model::interface::StatelessFailedErrorResponse>(),
-          boost::apply_visitor(
-              framework::SpecifiedVisitor<
-                  shared_model::interface::ErrorQueryResponse>(),
-              queryResponse.get())
-              .get());
-    });
-  };
+  
+  auto check = [this](auto &queryResponse){checkIfStatelessFailed(queryResponse);};
 
   auto query = TestUnsignedQueryBuilder()
                    .createdTime(iroha::time::now(std::chrono::hours(-24)
@@ -137,34 +140,17 @@ TEST_F(QueriesAcceptanceTest, More24HourOldTime) {
                    .signAndAddSignature(kUserKeypair)
                    .finish();
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
 
 /**
  * @given query with an 24 hour old UNIX time
- * @when execute any correct query with needed permitions
+ * @when execute any correct query with kGetRoles permissions
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, TwentyFourHourOldTime) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW({
-      boost::apply_visitor(
-          framework::SpecifiedVisitor<
-              shared_model::interface::StatelessFailedErrorResponse>(),
-          boost::apply_visitor(
-              framework::SpecifiedVisitor<
-                  shared_model::interface::ErrorQueryResponse>(),
-              queryResponse.get())
-              .get());
-    });
-  };
+
+  auto check = [this](auto &queryResponse){checkIfStatelessFailed(queryResponse);};
 
   auto query = TestUnsignedQueryBuilder()
                    .createdTime(iroha::time::now(std::chrono::hours(-24)))
@@ -175,27 +161,17 @@ TEST_F(QueriesAcceptanceTest, TwentyFourHourOldTime) {
                    .signAndAddSignature(kUserKeypair)
                    .finish();
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
 
 /**
  * @given query with less than 24 hour old UNIX time
- * @when execute any correct query with needed permitions
+ * @when execute any correct query with kGetRoles permissions
  * @then the query returns list of roles
  */
 TEST_F(QueriesAcceptanceTest, Less24HourOldTime) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW(boost::apply_visitor(
-        framework::SpecifiedVisitor<shared_model::interface::RolesResponse>(),
-        queryResponse.get()));
-  };
+
+  auto check = [this](auto &queryResponse){checkIfSuccess(queryResponse);};
 
   auto query = TestUnsignedQueryBuilder()
                    .createdTime(iroha::time::now(std::chrono::hours(-24)
@@ -207,27 +183,17 @@ TEST_F(QueriesAcceptanceTest, Less24HourOldTime) {
                    .signAndAddSignature(kUserKeypair)
                    .finish();
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
 
 /**
  * @given query with less than 5 minutes from future UNIX time
- * @when execute any correct query with needed permitions
+ * @when execute any correct query with kGetRoles permissions
  * @then the query returns list of roles
  */
 TEST_F(QueriesAcceptanceTest, LessFiveMinutesFromFuture) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW(boost::apply_visitor(
-        framework::SpecifiedVisitor<shared_model::interface::RolesResponse>(),
-        queryResponse.get()));
-  };
+
+  auto check = [this](auto &queryResponse){checkIfSuccess(queryResponse);};
 
   auto query = TestUnsignedQueryBuilder()
                    .createdTime(iroha::time::now(std::chrono::minutes(5)
@@ -239,27 +205,17 @@ TEST_F(QueriesAcceptanceTest, LessFiveMinutesFromFuture) {
                    .signAndAddSignature(kUserKeypair)
                    .finish();
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
 
 /**
  * @given query with 5 minutes from future UNIX time
- * @when execute any correct query with needed permitions
+ * @when execute any correct query with kGetRoles permissions
  * @then the query returns list of roles
  */
 TEST_F(QueriesAcceptanceTest, FiveMinutesFromFuture) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW(boost::apply_visitor(
-        framework::SpecifiedVisitor<shared_model::interface::RolesResponse>(),
-        queryResponse.get()));
-  };
+
+  auto check = [this](auto &queryResponse){checkIfSuccess(queryResponse);};
 
   auto query = TestUnsignedQueryBuilder()
                    .createdTime(iroha::time::now(std::chrono::minutes(5)))
@@ -270,34 +226,17 @@ TEST_F(QueriesAcceptanceTest, FiveMinutesFromFuture) {
                    .signAndAddSignature(kUserKeypair)
                    .finish();
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
 
 /**
  * @given query with more than 5 minutes from future UNIX time
- * @when execute any correct query with needed permitions
+ * @when execute any correct query with kGetRoles permissions
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, MoreFiveMinutesFromFuture) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW({
-      boost::apply_visitor(
-          framework::SpecifiedVisitor<
-              shared_model::interface::StatelessFailedErrorResponse>(),
-          boost::apply_visitor(
-              framework::SpecifiedVisitor<
-                  shared_model::interface::ErrorQueryResponse>(),
-              queryResponse.get())
-              .get());
-    });
-  };
+
+  auto check = [this](auto &queryResponse){checkIfStatelessFailed(queryResponse);};
 
   auto query = TestUnsignedQueryBuilder()
                    .createdTime(iroha::time::now(std::chrono::minutes(5)
@@ -309,34 +248,17 @@ TEST_F(QueriesAcceptanceTest, MoreFiveMinutesFromFuture) {
                    .signAndAddSignature(kUserKeypair)
                    .finish();
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
 
 /**
  * @given query with 10 minutes from future UNIX time
- * @when execute any correct query with needed permitions
+ * @when execute any correct query with kGetRoles permissions
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, TenMinutesFromFuture) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW({
-      boost::apply_visitor(
-          framework::SpecifiedVisitor<
-              shared_model::interface::StatelessFailedErrorResponse>(),
-          boost::apply_visitor(
-              framework::SpecifiedVisitor<
-                  shared_model::interface::ErrorQueryResponse>(),
-              queryResponse.get())
-              .get());
-    });
-  };
+
+  auto check = [this](auto &queryResponse){checkIfStatelessFailed(queryResponse);};
 
   auto query = TestUnsignedQueryBuilder()
                    .createdTime(iroha::time::now(std::chrono::minutes(10)))
@@ -347,34 +269,18 @@ TEST_F(QueriesAcceptanceTest, TenMinutesFromFuture) {
                    .signAndAddSignature(kUserKeypair)
                    .finish();
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
 
 /**
- * @given query with Keypair which contain invalid sign but valid public key
- * @when execute any correct query with needed permitions
+ * @given query with Keypair which contains invalid signature but valid public
+ * key
+ * @when execute any correct query with kGetRoles permissions
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, InvalidSignValidPubKeypair) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW({
-      boost::apply_visitor(
-          framework::SpecifiedVisitor<
-              shared_model::interface::StatelessFailedErrorResponse>(),
-          boost::apply_visitor(
-              framework::SpecifiedVisitor<
-                  shared_model::interface::ErrorQueryResponse>(),
-              queryResponse.get())
-              .get());
-    });
-  };
+
+  auto check = [this](auto &queryResponse){checkIfStatelessFailed(queryResponse);};
 
   crypto::Keypair kInvalidSignValidPubKeypair = crypto::Keypair(
       kUserKeypair.publicKey(),
@@ -389,34 +295,18 @@ TEST_F(QueriesAcceptanceTest, InvalidSignValidPubKeypair) {
                    .signAndAddSignature(kInvalidSignValidPubKeypair)
                    .finish();
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
 
 /**
- * @given query with Keypair which contain valid sign but invalid public key
- * @when execute any correct query with needed permitions
+ * @given query with Keypair which contains valid signature but invalid public
+ * key
+ * @when execute any correct query with kGetRoles permissions
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, ValidSignInvalidPubKeypair) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW({
-      boost::apply_visitor(
-          framework::SpecifiedVisitor<
-              shared_model::interface::StatelessFailedErrorResponse>(),
-          boost::apply_visitor(
-              framework::SpecifiedVisitor<
-                  shared_model::interface::ErrorQueryResponse>(),
-              queryResponse.get())
-              .get());
-    });
-  };
+
+  auto check = [this](auto &queryResponse){checkIfStatelessFailed(queryResponse);};
 
   crypto::Keypair kValidSignInvalidPubKeypair = crypto::Keypair(
       crypto::PublicKey(crypto::Blob::fromHexString(invalidPublicKey)),
@@ -431,34 +321,18 @@ TEST_F(QueriesAcceptanceTest, ValidSignInvalidPubKeypair) {
                    .signAndAddSignature(kValidSignInvalidPubKeypair)
                    .finish();
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
 
 /**
- * @given query with Keypair which contain invalid sign and invalid public key
- * @when execute any correct query with needed permitions
+ * @given query with Keypair which contains invalid signature and invalid public
+ * key
+ * @when execute any correct query with kGetRoles permissions
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, FullyInvalidKeypair) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW({
-      boost::apply_visitor(
-          framework::SpecifiedVisitor<
-              shared_model::interface::StatelessFailedErrorResponse>(),
-          boost::apply_visitor(
-              framework::SpecifiedVisitor<
-                  shared_model::interface::ErrorQueryResponse>(),
-              queryResponse.get())
-              .get());
-    });
-  };
+
+  auto check = [this](auto &queryResponse){checkIfStatelessFailed(queryResponse);};
 
   crypto::Keypair kFullyInvalidKeypair = crypto::Keypair(
       crypto::PublicKey(crypto::Blob::fromHexString(invalidPublicKey)),
@@ -473,34 +347,17 @@ TEST_F(QueriesAcceptanceTest, FullyInvalidKeypair) {
                    .signAndAddSignature(kFullyInvalidKeypair)
                    .finish();
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
 
 /**
- * @given query with Keypair which contain empty sign and valid public key
- * @when execute any correct query with needed permitions
+ * @given query with Keypair which contains empty signature and valid public key
+ * @when execute any correct query with kGetRoles permissions
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, EmptySignValidPubKeypair) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW({
-      boost::apply_visitor(
-          framework::SpecifiedVisitor<
-              shared_model::interface::StatelessFailedErrorResponse>(),
-          boost::apply_visitor(
-              framework::SpecifiedVisitor<
-                  shared_model::interface::ErrorQueryResponse>(),
-              queryResponse.get())
-              .get());
-    });
-  };
+
+  auto check = [this](auto &queryResponse){checkIfStatelessFailed(queryResponse);};
 
   auto proto_query = TestUnsignedQueryBuilder()
                          .createdTime(iroha::time::now())
@@ -513,36 +370,19 @@ TEST_F(QueriesAcceptanceTest, EmptySignValidPubKeypair) {
                          .getTransport();
 
   proto_query.clear_signature();
-  auto query = shared_model::proto::Query(proto_query);
+  auto query = proto::Query(proto_query);
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
 
 /**
- * @given query with Keypair which contain valid sign and empty public key
- * @when execute any correct query with needed permitions
+ * @given query with Keypair which contains valid signature and empty public key
+ * @when execute any correct query with kGetRoles permissions
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, ValidSignEmptyPubKeypair) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW({
-      boost::apply_visitor(
-          framework::SpecifiedVisitor<
-              shared_model::interface::StatelessFailedErrorResponse>(),
-          boost::apply_visitor(
-              framework::SpecifiedVisitor<
-                  shared_model::interface::ErrorQueryResponse>(),
-              queryResponse.get())
-              .get());
-    });
-  };
+
+  auto check = [this](auto &queryResponse){checkIfStatelessFailed(queryResponse);};
 
   auto proto_query = TestUnsignedQueryBuilder()
                          .createdTime(iroha::time::now())
@@ -555,36 +395,19 @@ TEST_F(QueriesAcceptanceTest, ValidSignEmptyPubKeypair) {
                          .getTransport();
 
   proto_query.mutable_signature()->clear_pubkey();
-  auto query = shared_model::proto::Query(proto_query);
+  auto query = proto::Query(proto_query);
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
 
 /**
- * @given query with Keypair which contain empty sign and empty public key
- * @when execute any correct query with needed permitions
+ * @given query with Keypair which contains empty signature and empty public key
+ * @when execute any correct query with kGetRoles permissions
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, FullyEmptyPubKeypair) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW({
-      boost::apply_visitor(
-          framework::SpecifiedVisitor<
-              shared_model::interface::StatelessFailedErrorResponse>(),
-          boost::apply_visitor(
-              framework::SpecifiedVisitor<
-                  shared_model::interface::ErrorQueryResponse>(),
-              queryResponse.get())
-              .get());
-    });
-  };
+
+  auto check = [this](auto &queryResponse){checkIfStatelessFailed(queryResponse);};
 
   auto proto_query = TestUnsignedQueryBuilder()
                          .createdTime(iroha::time::now())
@@ -598,38 +421,22 @@ TEST_F(QueriesAcceptanceTest, FullyEmptyPubKeypair) {
 
   proto_query.clear_signature();
   proto_query.mutable_signature()->clear_pubkey();
-  auto query = shared_model::proto::Query(proto_query);
+  auto query = proto::Query(proto_query);
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
 
 /**
- * @given query with Keypair which contain invalid sign and empty public key
- * @when execute any correct query with needed permitions
+ * @given query with Keypair which contains invalid signature and empty public
+ * key
+ * @when execute any correct query with kGetRoles permissions
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, InvalidSignEmptyPubKeypair) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW({
-      boost::apply_visitor(
-          framework::SpecifiedVisitor<
-              shared_model::interface::StatelessFailedErrorResponse>(),
-          boost::apply_visitor(
-              framework::SpecifiedVisitor<
-                  shared_model::interface::ErrorQueryResponse>(),
-              queryResponse.get())
-              .get());
-    });
-  };
 
-  shared_model::crypto::Keypair kInvalidSignEmptyPubKeypair = crypto::Keypair(
+  auto check = [this](auto &queryResponse){checkIfStatelessFailed(queryResponse);};
+
+  crypto::Keypair kInvalidSignEmptyPubKeypair = crypto::Keypair(
       kUserKeypair.publicKey(),
       crypto::PrivateKey(crypto::Blob::fromHexString(invalidPrivateKey)));
 
@@ -644,36 +451,20 @@ TEST_F(QueriesAcceptanceTest, InvalidSignEmptyPubKeypair) {
                          .getTransport();
 
   proto_query.mutable_signature()->clear_pubkey();
-  auto query = shared_model::proto::Query(proto_query);
+  auto query = proto::Query(proto_query);
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
 
 /**
- * @given query with Keypair which contain empty sign and invalid public key
- * @when execute any correct query with needed permitions
+ * @given query with Keypair which contains empty signature and invalid public
+ * key
+ * @when execute any correct query with kGetRoles permissions
  * @then the query should not pass stateless validation
  */
 TEST_F(QueriesAcceptanceTest, EmptySignInvalidPubKeypair) {
-  auto checkQuery = [](auto &queryResponse) {
-    ASSERT_NO_THROW({
-      boost::apply_visitor(
-          framework::SpecifiedVisitor<
-              shared_model::interface::StatelessFailedErrorResponse>(),
-          boost::apply_visitor(
-              framework::SpecifiedVisitor<
-                  shared_model::interface::ErrorQueryResponse>(),
-              queryResponse.get())
-              .get());
-    });
-  };
+
+  auto check = [this](auto &queryResponse){checkIfStatelessFailed(queryResponse);};
 
   crypto::Keypair kEmptySignInvalidPubKeypair = crypto::Keypair(
       crypto::PublicKey(crypto::Blob::fromHexString(invalidPublicKey)),
@@ -690,14 +481,7 @@ TEST_F(QueriesAcceptanceTest, EmptySignInvalidPubKeypair) {
                          .getTransport();
 
   proto_query.clear_signature();
-  auto query = shared_model::proto::Query(proto_query);
+  auto query = proto::Query(proto_query);
 
-  IntegrationTestFramework(1)
-      .setInitialState(kAdminKeypair)
-      .sendTx(makeUserWithPerms(
-          {shared_model::interface::permissions::Role::kGetRoles}))
-      .skipProposal()
-      .checkBlock(
-          [](auto &block) { ASSERT_EQ(block->transactions().size(), 1); })
-      .sendQuery(query, checkQuery);
+  itf.sendQuery(query, check);
 }
