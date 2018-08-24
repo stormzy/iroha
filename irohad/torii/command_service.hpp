@@ -153,10 +153,10 @@ namespace torii {
                     const iroha::protocol::ToriiResponse &response);
 
    private:
-    using CacheType =
-        iroha::cache::Cache<shared_model::crypto::Hash,
-                            shared_model::proto::TransactionResponse,
-                            shared_model::crypto::Hash::Hasher>;
+    using CacheType = iroha::cache::Cache<
+        shared_model::crypto::Hash,
+        std::shared_ptr<shared_model::proto::TransactionResponse>,
+        shared_model::crypto::Hash::Hasher>;
 
     std::shared_ptr<iroha::torii::TransactionProcessor> tx_processor_;
     std::shared_ptr<iroha::ametsuchi::Storage> storage_;

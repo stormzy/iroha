@@ -56,7 +56,7 @@ namespace torii {
       auto tx_hash = proto_response->transactionHash();
       auto cached_tx_state = cache_->findItem(tx_hash);
       if (cached_tx_state
-          and proto_response.comparePriorities(cached_tx_state) <= 0) {
+          and proto_response->comparePriorities(**cached_tx_state) <= 0) {
         return;
       }
       cache_->addItem(tx_hash, proto_response);
@@ -217,7 +217,7 @@ namespace torii {
     auto tx_hash = shared_model::crypto::Hash(request.tx_hash());
     auto resp = cache_->findItem(tx_hash);
     if (resp) {
-      response.CopyFrom(resp->getTransport());
+      response.CopyFrom((*resp)->getTransport());
     } else {
       response.set_tx_hash(request.tx_hash());
       auto hash = shared_model::crypto::Hash(request.tx_hash());
@@ -225,7 +225,8 @@ namespace torii {
         response.set_tx_status(iroha::protocol::TxStatus::COMMITTED);
         cache_->addItem(
             std::move(hash),
-            shared_model::proto::TransactionResponse(std::move(response)));
+            std::make_shared<shared_model::proto::TransactionResponse>(
+                shared_model::proto::TransactionResponse{response}));
       } else {
         log_->warn("Asked non-existing tx: {}",
                    iroha::bytestringToHexstring(request.tx_hash()));
@@ -260,16 +261,14 @@ namespace torii {
   CommandService::StatusStream(const shared_model::crypto::Hash &hash) {
     using ResponsePtrType =
         std::shared_ptr<shared_model::interface::TransactionResponse>;
-    ResponsePtrType initial_status =
-        clone(shared_model::proto::TransactionResponse(
-            cache_->findItem(hash).value_or([&] {
-              log_->debug("tx not received: {}", hash.toString());
-              return shared_model::proto::TransactionStatusBuilder()
-                  .txHash(hash)
-                  .notReceived()
-                  .build()
-                  .getTransport();
-            }())));
+    ResponsePtrType initial_status = cache_->findItem(hash).value_or([&] {
+      log_->debug("tx not received: {}", hash.toString());
+      return std::make_shared<shared_model::proto::TransactionResponse>(
+          shared_model::proto::TransactionStatusBuilder()
+              .txHash(hash)
+              .notReceived()
+              .build());
+    }());
     return status_bus_
         ->statuses()
         // prepend initial status

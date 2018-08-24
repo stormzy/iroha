@@ -19,6 +19,7 @@
 #define IROHA_PROTO_TX_RESPONSE_HPP
 
 #include "backend/protobuf/transaction_responses/proto_concrete_tx_response.hpp"
+#include "common/visitor.hpp"
 #include "utils/lazy_initializer.hpp"
 #include "utils/variant_deserializer.hpp"
 
@@ -64,7 +65,7 @@ namespace shared_model {
       }
 
       /**
-       * @return attached concrete tx response
+       * @return attached interface tx response
        */
       const ResponseVariantType &get() const override {
         return *ivariant_;
@@ -75,8 +76,8 @@ namespace shared_model {
        * @param other response
        * @return:
        *    - -1, if this response's priority is less, than other's
-       *    - 0, if it's equal
-       *    - 1, if it's greater
+       *    -  0, if it's equal
+       *    -  1, if it's greater
        */
       int comparePriorities(const TransactionResponse &other) const noexcept {
         if (this->priority() < other.priority()) {
@@ -124,7 +125,7 @@ namespace shared_model {
        */
       int priority() const noexcept {
         return iroha::visit_in_place(
-            get(),
+            *variant_,
             [](const StatelessValidTxResponse &) { return 1; },
             [](const MstPendingResponse &) { return 2; },
             [](const MstPassedResponse &) { return 3; },
