@@ -29,7 +29,7 @@ struct BlockMock : public iface::Block {
   MOCK_CONST_METHOD0(clone, BlockMock *());
 };
 
-struct TransactionMock : public iface::Transaction {
+struct MockTransaction : public iface::Transaction {
   MOCK_CONST_METHOD0(creatorAccountId, const iface::types::AccountIdType &());
   MOCK_CONST_METHOD0(quorum, iface::types::QuorumType());
   MOCK_CONST_METHOD0(commands, CommandsType());
@@ -43,7 +43,10 @@ struct TransactionMock : public iface::Transaction {
   MOCK_METHOD2(addSignature,
                bool(const shared_model::crypto::Signed &,
                     const shared_model::crypto::PublicKey &));
-  MOCK_CONST_METHOD0(clone, TransactionMock *());
+  MOCK_CONST_METHOD0(clone, MockTransaction *());
+  MOCK_CONST_METHOD0(reducedPayload, const iface::types::BlobType &());
+  MOCK_CONST_METHOD0(batchMeta,
+                     boost::optional<std::shared_ptr<iface::BatchMeta>>());
 };
 
 struct SignatureMock : public iface::Signature {
