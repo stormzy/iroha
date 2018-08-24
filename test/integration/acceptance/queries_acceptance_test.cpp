@@ -144,27 +144,6 @@ TEST_F(QueriesAcceptanceTest, More24HourOldTime) {
 }
 
 /**
- * @given query with an 24 hour old UNIX time
- * @when execute any correct query with kGetRoles permissions
- * @then the query should not pass stateless validation
- */
-TEST_F(QueriesAcceptanceTest, TwentyFourHourOldTime) {
-
-  auto check = [this](auto &queryResponse){checkIfStatelessFailed(queryResponse);};
-
-  auto query = TestUnsignedQueryBuilder()
-                   .createdTime(iroha::time::now(std::chrono::hours(-24)))
-                   .creatorAccountId(kUserId)
-                   .queryCounter(1)
-                   .getRoles()
-                   .build()
-                   .signAndAddSignature(kUserKeypair)
-                   .finish();
-
-  itf.sendQuery(query, check);
-}
-
-/**
  * @given query with less than 24 hour old UNIX time
  * @when execute any correct query with kGetRoles permissions
  * @then the query returns list of roles
