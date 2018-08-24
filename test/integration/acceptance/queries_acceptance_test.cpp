@@ -53,7 +53,7 @@ class QueriesAcceptanceTest : public AcceptanceFixture {
                              queryResponse.get()))
                   << "Actual response: " << queryResponse.toString();
   };
-  —
+
   template<typename F>
   auto checkIfStatelessFailed(F& queryResponse)
   {
