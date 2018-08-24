@@ -154,6 +154,11 @@ namespace iroha {
         return;
       }
       log_->info("propagating tx");
+      status_bus_->publish(
+          shared_model::builder::DefaultTransactionStatusBuilder()
+              .mstPassed()
+              .txHash(transaction->hash())
+              .build());
       pcs_->propagate_transaction(transaction);
     }
 

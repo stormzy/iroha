@@ -112,14 +112,16 @@ TEST_F(MstPipelineTest, OnePeerSendsTest) {
         ASSERT_NO_THROW(boost::apply_visitor(
             SpecifiedVisitor<interface::MstPendingResponse>(), resp.get()));
       };
+//  auto checkMstPassedTxStatus =
+//      [](const shared_model::proto::TransactionResponse &resp) {
+//        ASSERT_NO_THROW(boost::apply_visitor(
+//            SpecifiedVisitor<interface::MstPendingResponse>(), resp.get()));
+//      };
 
   IntegrationTestFramework itf(1, {}, [](auto &i) { i.done(); }, true);
   itf.setInitialState(kAdminKeypair);
   auto &mst_itf = makeMstUser(itf);
-  mst_itf
-      .sendTx(signTx(tx, kUserKeypair), checkMstPendingTxStatus)
-      // TODO(@l4l) 21/05/18 IR-1339
-      // tx should be checked for MST_AWAIT status
+  mst_itf.sendTx(signTx(tx, kUserKeypair), checkMstPendingTxStatus)
       .sendTx(signTx(tx, signatories[0]), checkMstPendingTxStatus)
       .sendTx(signTx(tx, signatories[1]))
       .skipProposal()
