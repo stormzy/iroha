@@ -16,6 +16,7 @@
  */
 
 #include <gtest/gtest.h>
+
 #include "cryptography/crypto_provider/crypto_defaults.hpp"
 #include "framework/integration_framework/integration_test_framework.hpp"
 #include "framework/specified_visitor.hpp"
@@ -30,8 +31,9 @@ using framework::SpecifiedVisitor;
 class MstPipelineTest : public AcceptanceFixture {
  public:
   /**
+   * Sign the transaction
    * @param tx pre-built transaction
-   * @param signatory id of signatory
+   * @param key to sign the transaction
    * @return signed transaction
    */
   template <typename TxBuilder>
@@ -40,25 +42,55 @@ class MstPipelineTest : public AcceptanceFixture {
   }
 
   /**
-   * Creates the transaction with the user creation commands
-   * @param perms are the permissions of the user
-   * @return built tx and a hash of its payload
+   * Creates a mst user
+   * @param itf, in which the user will be created
+   * @param sigs - number of signatories of that mst user
+   * @return itf with created user
    */
-  auto makeMstUser(size_t sigs = kSignatories) {
-    auto tx = createUserWithPerms(
-                  kUser,
-                  kUserKeypair.publicKey(),
-                  kNewRole,
-                  {shared_model::interface::permissions::Role::kAddAssetQty})
-                  .setAccountQuorum(kUserId, sigs + 1);
-
+  IntegrationTestFramework &makeMstUser(IntegrationTestFramework &itf,
+                                        size_t sigs = kSignatories) {
+    auto create_user_tx =
+        createUserWithPerms(
+            kUser,
+            kUserKeypair.publicKey(),
+            kNewRole,
+            {shared_model::interface::permissions::Role::kSetQuorum,
+             shared_model::interface::permissions::Role::kAddSignatory,
+             shared_model::interface::permissions::Role::kSetDetail})
+            .build()
+            .signAndAddSignature(kAdminKeypair)
+            .finish();
+    auto add_signatories_tx = baseTx().quorum(1);
     for (size_t i = 0; i < sigs; ++i) {
-      signatories.emplace_back(
+      signatories.push_back(
           crypto::DefaultCryptoAlgorithmType::generateKeypair());
-      tx = tx.addSignatory(kUserId, signatories[i].publicKey());
+      add_signatories_tx =
+          add_signatories_tx.addSignatory(kUserId, signatories[i].publicKey());
     }
-
-    return tx.build().signAndAddSignature(kAdminKeypair).finish();
+    add_signatories_tx.setAccountQuorum(kUserId, sigs + 1);
+    itf.sendTx(create_user_tx)
+        .checkProposal([](auto &proposal) {
+          ASSERT_EQ(proposal->transactions().size(), 1);
+        })
+        .checkVerifiedProposal([](auto &proposal) {
+          ASSERT_EQ(proposal->transactions().size(), 1);
+        })
+        .checkBlock([](auto &proposal) {
+          ASSERT_EQ(proposal->transactions().size(), 1);
+        })
+        .sendTx(add_signatories_tx.build()
+                    .signAndAddSignature(kUserKeypair)
+                    .finish())
+        .checkProposal([](auto &proposal) {
+          ASSERT_EQ(proposal->transactions().size(), 1);
+        })
+        .checkVerifiedProposal([](auto &proposal) {
+          ASSERT_EQ(proposal->transactions().size(), 1);
+        })
+        .checkBlock([](auto &proposal) {
+          ASSERT_EQ(proposal->transactions().size(), 1);
+        });
+    return itf;
   }
 
   const std::string kNewRole = "rl"s;
@@ -67,28 +99,32 @@ class MstPipelineTest : public AcceptanceFixture {
 };
 
 /**
- * @given multisignature account, pair of signers
- *        AND tx with an AddAssetQuantity command
- * @when sending with author signature and then with signers' one
- * @then firstly there's no commit then it is
+ * @given mst account, pair of signers and tx with a SetAccountDetail command
+ * @when sending that tx with author signature @and then with signers' ones
+ * @then commit appears only after tx is signed by all required signatories
  */
 TEST_F(MstPipelineTest, OnePeerSendsTest) {
+  auto tx = baseTx()
+                .setAccountDetail(kUserId, "fav_meme", "doge")
+                .quorum(kSignatories + 1);
   auto checkMstPendingTxStatus =
       [](const shared_model::proto::TransactionResponse &resp) {
         ASSERT_NO_THROW(boost::apply_visitor(
             SpecifiedVisitor<interface::MstPendingResponse>(), resp.get()));
       };
 
-  auto tx =
-      baseTx().setAccountQuorum(kUserId, kSignatories).quorum(kSignatories + 1);
-  auto user_tx = makeMstUser();
-
-  IntegrationTestFramework(1, {}, [](auto &i) { i.done(); }, true)
-      .setInitialState(kAdminKeypair)
-      .sendTx(user_tx)
-      .skipBlock()
+  IntegrationTestFramework itf(1, {}, [](auto &i) { i.done(); }, true);
+  itf.setInitialState(kAdminKeypair);
+  auto &mst_itf = makeMstUser(itf);
+  mst_itf
       .sendTx(signTx(tx, kUserKeypair), checkMstPendingTxStatus)
-      .sendTx(signTx(tx, signatories.at(0)), checkMstPendingTxStatus)
-      .sendTx(signTx(tx, signatories.at(1)))
-      .skipBlock();
+      // TODO(@l4l) 21/05/18 IR-1339
+      // tx should be checked for MST_AWAIT status
+      .sendTx(signTx(tx, signatories[0]), checkMstPendingTxStatus)
+      .sendTx(signTx(tx, signatories[1]))
+      .skipProposal()
+      .skipVerifiedProposal()
+      .checkBlock([](auto &proposal) {
+        ASSERT_EQ(proposal->transactions().size(), 1);
+      });
 }

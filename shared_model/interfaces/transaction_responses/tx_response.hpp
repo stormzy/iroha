@@ -57,6 +57,14 @@ namespace shared_model {
        */
       virtual const ResponseVariantType &get() const = 0;
 
+      /// Message type
+      using ErrorMessageType = std::string;
+
+      /**
+       * @return error message if present, otherwise - an empty string
+       */
+      virtual const ErrorMessageType &errorMessage() const = 0;
+
       // ------------------------| Primitive override |-------------------------
 
       std::string toString() const override {
@@ -64,6 +72,7 @@ namespace shared_model {
             .init("TransactionResponse")
             .append("transactionHash", transactionHash().hex())
             .append(boost::apply_visitor(detail::ToStringVisitor(), get()))
+            .append("errorMessage", errorMessage())
             .finalize();
       }
 
