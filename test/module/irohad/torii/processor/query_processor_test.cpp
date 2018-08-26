@@ -13,7 +13,6 @@
 #include "framework/test_subscriber.hpp"
 #include "interfaces/query_responses/block_query_response.hpp"
 #include "module/irohad/ametsuchi/ametsuchi_mocks.hpp"
-#include "module/irohad/execution/execution_mocks.hpp"
 #include "module/irohad/validation/validation_mocks.hpp"
 #include "module/shared_model/builders/protobuf/test_block_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_query_builder.hpp"
@@ -37,7 +36,7 @@ using ::testing::Return;
 class QueryProcessorTest : public ::testing::Test {
  public:
   void SetUp() override {
-    qry_exec = std::make_shared<MockQueryExecution>();
+    qry_exec = std::make_shared<MockQueryExecutor>();
     storage = std::make_shared<MockStorage>();
     qpi = std::make_shared<torii::QueryProcessorImpl>(storage, qry_exec);
     wsv_queries = std::make_shared<MockWsvQuery>();
@@ -64,7 +63,7 @@ class QueryProcessorTest : public ::testing::Test {
 
   std::vector<shared_model::interface::types::PubkeyType> signatories = {
       keypair.publicKey()};
-  std::shared_ptr<MockQueryExecution> qry_exec;
+  std::shared_ptr<MockQueryExecutor> qry_exec;
   std::shared_ptr<MockWsvQuery> wsv_queries;
   std::shared_ptr<MockBlockQuery> block_queries;
   std::shared_ptr<MockStorage> storage;
@@ -83,13 +82,13 @@ TEST_F(QueryProcessorTest, QueryProcessorWhereInvokeInvalidQuery) {
                  .build()
                  .signAndAddSignature(keypair)
                  .finish();
-  auto qry_resp =
-      clone(TestQueryResponseBuilder().accountDetailResponse("").build());
+  auto *qry_resp =
+      clone(TestQueryResponseBuilder().accountDetailResponse("").build())
+          .release();
 
   EXPECT_CALL(*wsv_queries, getSignatories(kAccountId))
       .WillRepeatedly(Return(signatories));
-  EXPECT_CALL(*qry_exec, validateAndExecute(_))
-      .WillOnce(Invoke([&qry_resp](auto &query) { return clone(*qry_resp); }));
+  EXPECT_CALL(*qry_exec, validateAndExecute_(_)).WillOnce(Return(qry_resp));
 
   auto response = qpi->queryHandle(qry);
   ASSERT_TRUE(response);

@@ -82,6 +82,8 @@ namespace iroha {
 
       std::shared_ptr<BlockQuery> getBlockQuery() const override;
 
+      std::shared_ptr<QueryExecutor> getQueryExecutor() const override;
+
       rxcpp::observable<std::shared_ptr<shared_model::interface::Block>>
       on_commit() override;
 

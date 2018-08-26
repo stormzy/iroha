@@ -11,6 +11,7 @@
 #include "ametsuchi/impl/flat_file/flat_file.hpp"
 #include "ametsuchi/impl/mutable_storage_impl.hpp"
 #include "ametsuchi/impl/postgres_block_query.hpp"
+#include "ametsuchi/impl/postgres_query_executor.hpp"
 #include "ametsuchi/impl/postgres_wsv_query.hpp"
 #include "ametsuchi/impl/temporary_wsv_impl.hpp"
 #include "backend/protobuf/permissions.hpp"
@@ -347,6 +348,14 @@ WHERE pg_stat_activity.datname = :dbname
     std::shared_ptr<BlockQuery> StorageImpl::getBlockQuery() const {
       return setupQuery<PostgresBlockQuery>(
           *block_store_, connection_, log_, drop_mutex);
+    }
+
+    std::shared_ptr<QueryExecutor> StorageImpl::getQueryExecutor() const {
+      std::shared_lock<std::shared_timed_mutex> lock(drop_mutex);
+      return std::make_shared<iroha::ametsuchi::PostgresQueryExecutor>(
+          std::make_unique<soci::session>(*connection_),
+          factory_,
+          *block_store_);
     }
 
     rxcpp::observable<std::shared_ptr<shared_model::interface::Block>>

@@ -48,7 +48,7 @@ namespace iroha {
 
     QueryProcessorImpl::QueryProcessorImpl(
         std::shared_ptr<ametsuchi::Storage> storage,
-        std::shared_ptr<QueryExecution> qry_exec)
+        std::shared_ptr<ametsuchi::QueryExecutor> qry_exec)
         : storage_(storage), qry_exec_(qry_exec) {
       storage_->on_commit().subscribe(
           [this](std::shared_ptr<shared_model::interface::Block> block) {

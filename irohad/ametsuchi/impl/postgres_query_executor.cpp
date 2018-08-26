@@ -9,8 +9,12 @@
 #include <soci/boost-tuple.h>
 #include <boost/algorithm/string.hpp>
 #include <boost/format.hpp>
+#include <boost/range/adaptor/transformed.hpp>
+#include <boost/range/algorithm/for_each.hpp>
 
 #include "ametsuchi/impl/soci_utils.hpp"
+#include "common/types.hpp"
+#include "converters/protobuf/json_proto_converter.hpp"
 #include "interfaces/queries/blocks_query.hpp"
 
 using namespace shared_model::interface::permissions;
@@ -125,6 +129,28 @@ namespace {
             % getDomainFromName(target_account))
         .str();
   }
+
+  using namespace iroha;
+
+  void callback(
+      std::vector<std::shared_ptr<shared_model::interface::Transaction>>
+          &blocks,
+      uint64_t block_id,
+      iroha::ametsuchi::KeyValueStorage &block_store,
+      std::vector<uint64_t> &result) {
+    auto block = block_store.get(block_id) | [](const auto &bytes) {
+      return shared_model::converters::protobuf::jsonToModel<
+          shared_model::proto::Block>(bytesToString(bytes));
+    };
+    if (not block) {
+      return;
+    }
+
+    boost::for_each(result, [&](const auto &x) {
+      blocks.push_back(std::shared_ptr<shared_model::interface::Transaction>(
+          clone(block->transactions()[x])));
+    });
+  }
 }  // namespace
 
 using namespace shared_model::interface::permissions;
@@ -132,13 +158,13 @@ using namespace shared_model::interface::permissions;
 namespace iroha {
   namespace ametsuchi {
     PostgresQueryExecutor::PostgresQueryExecutor(
-        std::shared_ptr<ametsuchi::Storage> storage,
-        soci::session &sql,
-        std::shared_ptr<shared_model::interface::CommonObjectsFactory> factory)
-        : storage_(storage),
-          sql_(sql),
+        std::unique_ptr<soci::session> sql,
+        std::shared_ptr<shared_model::interface::CommonObjectsFactory> factory,
+        KeyValueStorage &block_store)
+        : sql_(std::move(sql)),
+          block_store_(block_store),
           factory_(factory),
-          visitor_(sql_, factory_) {}
+          visitor_(*sql_, factory_, block_store_) {}
 
     QueryExecutorResult PostgresQueryExecutor::validateAndExecute(
         const shared_model::interface::Query &query) {
@@ -151,7 +177,7 @@ namespace iroha {
         const shared_model::interface::BlocksQuery &query) {
       boost::format cmd(R"(%s)");
       soci::statement st =
-          (sql_.prepare
+          (sql_->prepare
            << (cmd % checkAccountRolePermission(Role::kGetBlocks)).str());
       int has_perm;
       st.exchange(soci::use(query.creatorAccountId(), "role_account_id"));
@@ -164,8 +190,9 @@ namespace iroha {
 
     PostgresQueryExecutorVisitor::PostgresQueryExecutorVisitor(
         soci::session &sql,
-        std::shared_ptr<shared_model::interface::CommonObjectsFactory> factory)
-        : sql_(sql), factory_(factory) {}
+        std::shared_ptr<shared_model::interface::CommonObjectsFactory> factory,
+        KeyValueStorage &block_store)
+        : sql_(sql), block_store_(block_store), factory_(factory) {}
 
     void PostgresQueryExecutorVisitor::setCreatorId(
         const shared_model::interface::types::AccountIdType &creator_id) {
@@ -243,10 +270,10 @@ namespace iroha {
       boost::tuple<boost::optional<std::string>, int> row;
       auto cmd = (boost::format(R"(WITH has_perms AS (%s),
       t AS (
-          SELECT account_id FROM account_has_signatory
+          SELECT public_key FROM account_has_signatory
           WHERE account_id = :account_id
       )
-      SELECT account_id, perm FROM t
+      SELECT public_key, perm FROM t
       RIGHT OUTER JOIN has_perms ON TRUE
       )")
                   % hasQueryPermission(creator_id_,
@@ -291,21 +318,27 @@ namespace iroha {
     QueryResponseBuilderDone PostgresQueryExecutorVisitor::operator()(
         const shared_model::interface::GetAccountTransactions &q) {
       soci::indicator ind;
-      boost::tuple<boost::optional<std::string>, int> row;
+      using T = boost::
+          tuple<boost::optional<uint64_t>, boost::optional<uint64_t>, int>;
+      T row;
       auto cmd = (boost::format(R"(WITH has_perms AS (%s),
       t AS (
-          SELECT account_id FROM account_has_signatory
+          SELECT DISTINCT has.height, index
+          FROM height_by_account_set AS has
+          JOIN index_by_creator_height AS ich ON has.height = ich.height
+          AND has.account_id = ich.creator_id
           WHERE account_id = :account_id
+          ORDER BY has.height, index ASC
       )
-      SELECT account_id, perm FROM t
+      SELECT height, index, perm FROM t
       RIGHT OUTER JOIN has_perms ON TRUE
       )")
-          % hasQueryPermission(creator_id_,
-                               q.accountId(),
-                               Role::kGetMyAccTxs,
-                               Role::kGetAllAccTxs,
-                               Role::kGetDomainAccTxs))
-          .str();
+                  % hasQueryPermission(creator_id_,
+                                       q.accountId(),
+                                       Role::kGetMyAccTxs,
+                                       Role::kGetAllAccTxs,
+                                       Role::kGetDomainAccTxs))
+                     .str();
       soci::statement st = (sql_.prepare << cmd);
       st.exchange(soci::use(q.accountId()));
       st.exchange(soci::into(row, ind));
@@ -315,19 +348,208 @@ namespace iroha {
 
       int has_perm = -1;
 
+      std::map<uint64_t, std::vector<uint64_t>> index;
 
+      processSoci(st, ind, row, [&index, &has_perm](T &row) {
+        has_perm = row.get<2>();
+        if (row.get<0>()) {
+          if (index.find(row.get<0>().get()) == index.end()) {
+            index[row.get<0>().get()] = std::vector<uint64_t>();
+          }
+          index[row.get<0>().get()].push_back(row.get<1>().get());
+        }
+      });
 
-      return statefulFailed();
+      if (not has_perm) {
+        return statefulFailed();
+      }
+
+      std::vector<shared_model::proto::Transaction> proto;
+      std::vector<std::shared_ptr<shared_model::interface::Transaction>> txs;
+      for (auto &block : index) {
+        callback(txs, block.first, block_store_, block.second);
+      }
+
+      std::transform(
+          txs.begin(),
+          txs.end(),
+          std::back_inserter(proto),
+          [](const auto &tx) {
+            return *std::static_pointer_cast<shared_model::proto::Transaction>(
+                tx);
+          });
+
+      auto response = QueryResponseBuilder().transactionsResponse(proto);
+      return response;
     }
 
     QueryResponseBuilderDone PostgresQueryExecutorVisitor::operator()(
         const shared_model::interface::GetTransactions &q) {
-      return statefulFailed();
+      std::string hash_str;
+
+      for (size_t i = 0; i < q.transactionHashes().size(); i++) {
+        if (i > 0) {
+          hash_str += ",";
+        }
+        hash_str += "'" + q.transactionHashes()[i].hex() + "'";
+      }
+
+      soci::indicator ind;
+      using T = boost::tuple<boost::optional<uint64_t>,
+                             boost::optional<std::string>,
+                             int,
+                             int>;
+      T row;
+      auto cmd = (boost::format(R"(WITH has_my_perm AS (%s),
+      has_all_perm AS (%s),
+      t AS (
+          SELECT height, hash FROM height_by_hash WHERE hash IN (%s)
+      )
+      SELECT height, hash, has_my_perm.perm, has_all_perm.perm FROM t
+      RIGHT OUTER JOIN has_my_perm ON TRUE
+      RIGHT OUTER JOIN has_all_perm ON TRUE
+      )") % checkAccountRolePermission(Role::kGetMyTxs, "account_id")
+                  % checkAccountRolePermission(Role::kGetAllTxs, "account_id")
+          % hash_str
+      )
+                     .str();
+      soci::statement st = (sql_.prepare << cmd);
+      st.exchange(soci::use(creator_id_, "account_id"));
+      st.exchange(soci::into(row, ind));
+
+      st.define_and_bind();
+      try {
+        st.execute();
+      } catch (std::exception &e) {
+        e.what();
+      }
+
+      int has_my_perm = -1;
+      int has_all_perm = -1;
+
+      std::map<uint64_t, std::vector<std::string>> index;
+
+      processSoci(st, ind, row, [&](T &row) {
+        has_my_perm = row.get<2>();
+        has_all_perm = row.get<3>();
+        if (row.get<0>()) {
+          if (index.find(row.get<0>().get()) == index.end()) {
+            index[row.get<0>().get()] = std::vector<std::string>();
+          }
+          index[row.get<0>().get()].push_back(row.get<1>().get());
+        }
+      });
+
+      if (not has_my_perm and not has_all_perm) {
+        return statefulFailed();
+      }
+
+      std::vector<shared_model::proto::Transaction> proto;
+      std::vector<std::shared_ptr<shared_model::interface::Transaction>> txs;
+      for (auto &block : index) {
+        auto b = block_store_.get(block.first) | [](const auto &bytes) {
+          return shared_model::converters::protobuf::jsonToModel<
+              shared_model::proto::Block>(bytesToString(bytes));
+        };
+        if (not b) {
+          break;
+        }
+
+        boost::for_each(block.second, [&](const auto &x) {
+          boost::for_each(b->transactions(), [&](const auto &tx) {
+            if (tx.hash().hex() == x
+                and (has_all_perm
+                     or (has_my_perm
+                         and tx.creatorAccountId() == creator_id_))) {
+              txs.push_back(
+                  std::shared_ptr<shared_model::interface::Transaction>(
+                      clone(tx)));
+            }
+          });
+        });
+      }
+
+      std::transform(
+          txs.begin(),
+          txs.end(),
+          std::back_inserter(proto),
+          [](const auto &tx) {
+            return *std::static_pointer_cast<shared_model::proto::Transaction>(
+                tx);
+          });
+
+      auto response = QueryResponseBuilder().transactionsResponse(proto);
+      return response;
     }
 
     QueryResponseBuilderDone PostgresQueryExecutorVisitor::operator()(
         const shared_model::interface::GetAccountAssetTransactions &q) {
-      return statefulFailed();
+      soci::indicator ind;
+      using T = boost::
+      tuple<boost::optional<uint64_t>, boost::optional<uint64_t>, int>;
+      T row;
+      auto cmd = (boost::format(R"(WITH has_perms AS (%s),
+      t AS (
+          SELECT DISTINCT has.height, index
+          FROM height_by_account_set AS has
+          JOIN index_by_id_height_asset AS ich ON has.height = ich.height
+          AND has.account_id = ich.id
+          WHERE account_id = :account_id
+          AND asset_id = :asset_id
+          ORDER BY has.height, index ASC
+      )
+      SELECT height, index, perm FROM t
+      RIGHT OUTER JOIN has_perms ON TRUE
+      )")
+          % hasQueryPermission(creator_id_,
+                               q.accountId(),
+                               Role::kGetMyAccAstTxs,
+                               Role::kGetAllAccAstTxs,
+                               Role::kGetDomainAccAstTxs))
+          .str();
+      soci::statement st = (sql_.prepare << cmd);
+      st.exchange(soci::use(q.accountId(), "account_id"));
+      st.exchange(soci::use(q.assetId(), "asset_id"));
+      st.exchange(soci::into(row, ind));
+
+      st.define_and_bind();
+      st.execute();
+
+      int has_perm = -1;
+
+      std::map<uint64_t, std::vector<uint64_t>> index;
+
+      processSoci(st, ind, row, [&index, &has_perm](T &row) {
+        has_perm = row.get<2>();
+        if (row.get<0>()) {
+          if (index.find(row.get<0>().get()) == index.end()) {
+            index[row.get<0>().get()] = std::vector<uint64_t>();
+          }
+          index[row.get<0>().get()].push_back(row.get<1>().get());
+        }
+      });
+
+      if (not has_perm) {
+        return statefulFailed();
+      }
+
+      std::vector<shared_model::proto::Transaction> proto;
+      std::vector<std::shared_ptr<shared_model::interface::Transaction>> txs;
+      for (auto &block : index) {
+        callback(txs, block.first, block_store_, block.second);
+      }
+
+      std::transform(
+          txs.begin(),
+          txs.end(),
+          std::back_inserter(proto),
+          [](const auto &tx) {
+            return *std::static_pointer_cast<shared_model::proto::Transaction>(
+                tx);
+          });
+
+      auto response = QueryResponseBuilder().transactionsResponse(proto);
+      return response;
     }
 
     QueryResponseBuilderDone PostgresQueryExecutorVisitor::operator()(
@@ -379,11 +601,6 @@ namespace iroha {
 
       if (not has_perm) {
         return statefulFailed();
-      }
-
-      if (account_assets.empty()) {
-        return buildError<
-            shared_model::interface::NoAccountAssetsErrorResponse>();
       }
       return QueryResponseBuilder().accountAssetResponse(account_assets);
     }
@@ -528,16 +745,17 @@ namespace iroha {
 
     QueryResponseBuilderDone PostgresQueryExecutorVisitor::operator()(
         const shared_model::interface::GetAssetInfo &q) {
-      using T = boost::tuple<boost::optional<std::string>, boost::optional<uint32_t >, int>;
+      using T = boost::
+          tuple<boost::optional<std::string>, boost::optional<uint32_t>, int>;
       T row;
       auto cmd = (boost::format(
-          R"(WITH has_perms AS (%s),
+                      R"(WITH has_perms AS (%s),
       perms AS (SELECT domain_id, precision FROM asset
                 WHERE asset_id = :asset_id)
       SELECT domain_id, precision, perm FROM perms
       RIGHT OUTER JOIN has_perms ON TRUE
       )") % checkAccountRolePermission(Role::kReadAssets))
-          .str();
+                     .str();
       soci::statement st = (sql_.prepare << cmd);
       st.exchange(soci::use(creator_id_, "role_account_id"));
       st.exchange(soci::use(q.assetId(), "asset_id"));
@@ -561,7 +779,10 @@ namespace iroha {
 
     QueryResponseBuilderDone PostgresQueryExecutorVisitor::operator()(
         const shared_model::interface::GetPendingTransactions &q) {
-      return statefulFailed();
+      std::vector<shared_model::proto::Transaction> txs;
+      // TODO 2018-07-04, igor-egorov, IR-1486, the core logic is to be implemented
+      auto response = QueryResponseBuilder().transactionsResponse(txs);
+      return response;
     }
   }  // namespace ametsuchi
 }  // namespace iroha

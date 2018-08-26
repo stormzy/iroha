@@ -4,6 +4,7 @@
  */
 
 #include "ametsuchi/impl/postgres_query_executor.hpp"
+#include "ametsuchi/impl/flat_file/flat_file.hpp"
 #include "ametsuchi/impl/postgres_command_executor.hpp"
 #include "ametsuchi/impl/postgres_wsv_query.hpp"
 #include "framework/result_fixture.hpp"
@@ -12,6 +13,7 @@
 #include "module/irohad/ametsuchi/ametsuchi_mocks.hpp"
 #include "module/shared_model/builders/protobuf/test_account_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_asset_builder.hpp"
+#include "module/shared_model/builders/protobuf/test_block_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_domain_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_peer_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_query_builder.hpp"
@@ -46,13 +48,18 @@ namespace iroha {
       void SetUp() override {
         AmetsuchiTest::SetUp();
         sql = std::make_unique<soci::session>(soci::postgresql, pgopt_);
+        auto block_store = FlatFile::create("/tmp/block_store");
+        ASSERT_TRUE(block_store);
+        this->block_store = std::move(block_store.get());
 
         auto factory =
             std::make_shared<shared_model::proto::ProtoCommonObjectsFactory<
                 shared_model::validation::FieldValidator>>();
         query_executor =
             std::make_unique<iroha::ametsuchi::PostgresQueryExecutor>(
-                std::make_shared<MockStorage>(), *sql, factory);
+                std::make_unique<soci::session>(soci::postgresql, pgopt_),
+                factory,
+                *this->block_store);
         executor = std::make_unique<PostgresCommandExecutor>(*sql);
 
         *sql << init_;
@@ -69,6 +76,11 @@ namespace iroha {
             val(execute(buildCommand(TestTransactionBuilder().createAccount(
                             "id", domain->domainId(), *pubkey)),
                         true)));
+      }
+
+      void TearDown() override {
+        AmetsuchiTest::TearDown();
+        block_store->dropAll();
       }
 
       CommandResult execute(
@@ -137,6 +149,8 @@ namespace iroha {
 
       std::unique_ptr<QueryExecutor> query_executor;
       std::unique_ptr<CommandExecutor> executor;
+
+      std::unique_ptr<KeyValueStorage> block_store;
     };
 
     class BlocksQueryExecutorTest : public QueryExecutorTest {};
@@ -490,20 +504,6 @@ namespace iroha {
           result->get()));
     }
 
-    TEST_F(GetAccountAssetExecutorTest,
-           GetAccountAssetExecutorTestInvalidNoAccount) {
-      addPerms({shared_model::interface::permissions::Role::kGetAllAccAst});
-      auto query = TestQueryBuilder()
-                       .creatorAccountId(account->accountId())
-                       .getAccountAssets("some@domain")
-                       .build();
-      auto result = query_executor->validateAndExecute(query);
-      ASSERT_TRUE(boost::apply_visitor(
-          shared_model::interface::QueryErrorResponseChecker<
-              shared_model::interface::NoAccountAssetsErrorResponse>(),
-          result->get()));
-    }
-
     class GetAccountDetailExecutorTest : public QueryExecutorTest {
      public:
       void SetUp() override {
@@ -837,6 +837,375 @@ namespace iroha {
       auto query = TestQueryBuilder()
                        .creatorAccountId(account->accountId())
                        .getAssetInfo(asset_id)
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_TRUE(boost::apply_visitor(
+          shared_model::interface::QueryErrorResponseChecker<
+              shared_model::interface::StatefulFailedErrorResponse>(),
+          result->get()));
+    }
+
+    class GetTransactionsExecutorTest : public QueryExecutorTest {
+     public:
+      void SetUp() override {
+        QueryExecutorTest::SetUp();
+        std::string block_store_dir = "/tmp/block_store";
+        auto storageResult =
+            StorageImpl::create(block_store_dir, pgopt_, factory);
+        storageResult.match(
+            [&](expected::Value<std::shared_ptr<ametsuchi::StorageImpl>>
+                    &_storage) { storage = _storage.value; },
+            [&](expected::Error<std::string> &error) {
+              FAIL() << error.error;
+            });
+        auto block_store = FlatFile::create(block_store_dir);
+        ASSERT_TRUE(block_store);
+        this->block_store = std::move(block_store.get());
+
+        auto factory =
+            std::make_shared<shared_model::proto::ProtoCommonObjectsFactory<
+                shared_model::validation::FieldValidator>>();
+        query_executor =
+            std::make_unique<iroha::ametsuchi::PostgresQueryExecutor>(
+                std::make_unique<soci::session>(soci::postgresql, pgopt_),
+                factory,
+                *this->block_store);
+
+        account2 = clone(TestAccountBuilder()
+                             .domainId(domain->domainId())
+                             .accountId("id2@" + domain->domainId())
+                             .quorum(1)
+                             .jsonData(R"({"id@domain": {"key": "value"}})")
+                             .build());
+        auto pubkey2 =
+            std::make_unique<shared_model::interface::types::PubkeyType>(
+                std::string('2', 32));
+        ASSERT_TRUE(
+            val(execute(buildCommand(TestTransactionBuilder().createAccount(
+                            "id2", domain->domainId(), *pubkey2)),
+                        true)));
+        ASSERT_TRUE(
+            val(execute(buildCommand(TestTransactionBuilder().createAsset(
+                            "coin", domain->domainId(), 1)),
+                        true)));
+      }
+
+      /**
+       * Apply block to given storage
+       * @tparam S storage type
+       * @param storage storage object
+       * @param block to apply
+       */
+      template <typename S>
+      void apply(S &&storage, const shared_model::interface::Block &block) {
+        std::unique_ptr<MutableStorage> ms;
+        auto storageResult = storage->createMutableStorage();
+        storageResult.match(
+            [&](iroha::expected::Value<std::unique_ptr<MutableStorage>>
+                    &_storage) { ms = std::move(_storage.value); },
+            [](iroha::expected::Error<std::string> &error) {
+              FAIL() << "MutableStorage: " << error.error;
+            });
+        ms->apply(block,
+                  [](const auto &, auto &, const auto &) { return true; });
+        storage->commit(std::move(ms));
+      }
+
+      void commitBlocks() {
+        auto zero_string = std::string(32, '0');
+        auto fake_hash = shared_model::crypto::Hash(zero_string);
+        auto fake_pubkey = shared_model::crypto::PublicKey(zero_string);
+
+        auto tx1 = TestTransactionBuilder()
+                       .creatorAccountId(account->accountId())
+                       .createRole("user", {})
+                       .build();
+
+        auto tx2 = TestTransactionBuilder()
+                       .creatorAccountId(account->accountId())
+                       .addAssetQuantity(asset_id, "2.0")
+                       .transferAsset(account->accountId(),
+                                      account2->accountId(),
+                                      asset_id,
+                                      "",
+                                      "1.0")
+                       .build();
+
+        auto tx3 = TestTransactionBuilder()
+                       .creatorAccountId(account2->accountId())
+                       .transferAsset(account->accountId(),
+                                      account2->accountId(),
+                                      asset_id,
+                                      "",
+                                      "1.0")
+                       .build();
+
+        auto block1 =
+            TestBlockBuilder()
+                .transactions(std::vector<shared_model::proto::Transaction>({
+                    tx1,
+                    tx2,
+                    TestTransactionBuilder()
+                        .creatorAccountId(account2->accountId())
+                        .createRole("user2", {})
+                        .build(),
+                }))
+                .height(1)
+                .prevHash(fake_hash)
+                .build();
+
+        apply(storage, block1);
+
+        auto block2 =
+            TestBlockBuilder()
+                .transactions(std::vector<shared_model::proto::Transaction>(
+                    {tx3,
+                     TestTransactionBuilder()
+                         .creatorAccountId(account->accountId())
+                         .createRole("user3", {})
+                         .build()
+
+                    }))
+                .height(2)
+                .prevHash(block1.hash())
+                .build();
+
+        apply(storage, block2);
+
+        hash1 = tx1.hash();
+        hash2 = tx2.hash();
+        hash3 = tx3.hash();
+      }
+
+      const std::string asset_id = "coin#domain";
+      std::shared_ptr<iroha::ametsuchi::Storage> storage;
+      std::unique_ptr<shared_model::interface::Account> account2;
+      shared_model::crypto::Hash hash1;
+      shared_model::crypto::Hash hash2;
+      shared_model::crypto::Hash hash3;
+    };
+
+    class GetAccountTransactionsExecutorTest
+        : public GetTransactionsExecutorTest {};
+
+    TEST_F(GetAccountTransactionsExecutorTest,
+           GetAccountTransactionsExecutorTestValidMyAcc) {
+      addPerms({shared_model::interface::permissions::Role::kGetMyAccTxs});
+
+      commitBlocks();
+
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getAccountTransactions(account->accountId())
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::TransactionsResponse>(),
+            result->get());
+        ASSERT_EQ(cast_resp.transactions().size(), 3);
+        for (const auto &tx : cast_resp.transactions()) {
+          EXPECT_EQ(account->accountId(), tx.creatorAccountId());
+        }
+      });
+    }
+
+    TEST_F(GetAccountTransactionsExecutorTest,
+           GetAccountTransactionsExecutorTestValidAllAcc) {
+      addPerms({shared_model::interface::permissions::Role::kGetAllAccTxs});
+
+      commitBlocks();
+
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getAccountTransactions(account2->accountId())
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::TransactionsResponse>(),
+            result->get());
+        ASSERT_EQ(cast_resp.transactions().size(), 2);
+        for (const auto &tx : cast_resp.transactions()) {
+          EXPECT_EQ(account2->accountId(), tx.creatorAccountId());
+        }
+      });
+    }
+
+    TEST_F(GetAccountTransactionsExecutorTest,
+           GetAccountTransactionsExecutorTestValidDomainAcc) {
+      addPerms({shared_model::interface::permissions::Role::kGetDomainAccTxs});
+
+      commitBlocks();
+
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getAccountTransactions(account2->accountId())
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::TransactionsResponse>(),
+            result->get());
+        ASSERT_EQ(cast_resp.transactions().size(), 2);
+        for (const auto &tx : cast_resp.transactions()) {
+          EXPECT_EQ(account2->accountId(), tx.creatorAccountId());
+        }
+      });
+    }
+
+    TEST_F(GetAccountTransactionsExecutorTest,
+           GetAccountTransactionsExecutorTestInvalid) {
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getAccountTransactions(account->accountId())
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_TRUE(boost::apply_visitor(
+          shared_model::interface::QueryErrorResponseChecker<
+              shared_model::interface::StatefulFailedErrorResponse>(),
+          result->get()));
+    }
+
+    class GetTransactionsHashExecutorTest : public GetTransactionsExecutorTest {
+    };
+
+    TEST_F(GetTransactionsHashExecutorTest,
+           GetTransactionsHashExecutorTestValidAllAcc) {
+      addPerms({shared_model::interface::permissions::Role::kGetAllTxs});
+
+      commitBlocks();
+
+      std::vector<decltype(hash1)> hashes;
+      hashes.push_back(hash1);
+      hashes.push_back(hash2);
+      hashes.push_back(hash3);
+
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getTransactions(hashes)
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::TransactionsResponse>(),
+            result->get());
+        ASSERT_EQ(cast_resp.transactions().size(), 3);
+        ASSERT_EQ(cast_resp.transactions()[0].hash(), hash1);
+        ASSERT_EQ(cast_resp.transactions()[1].hash(), hash2);
+        ASSERT_EQ(cast_resp.transactions()[2].hash(), hash3);
+      });
+    }
+
+    TEST_F(GetTransactionsHashExecutorTest,
+           GetTransactionsHashExecutorTestValidMyAcc) {
+      addPerms({shared_model::interface::permissions::Role::kGetMyTxs});
+
+      commitBlocks();
+
+      std::vector<decltype(hash1)> hashes;
+      hashes.push_back(hash1);
+      hashes.push_back(hash2);
+      hashes.push_back(hash3);
+
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getTransactions(hashes)
+                       .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::TransactionsResponse>(),
+            result->get());
+        ASSERT_EQ(cast_resp.transactions().size(), 2);
+        ASSERT_EQ(cast_resp.transactions()[0].hash(), hash1);
+        ASSERT_EQ(cast_resp.transactions()[1].hash(), hash2);
+      });
+    }
+
+    class GetAccountAssetTransactionsExecutorTest
+        : public GetTransactionsExecutorTest {};
+
+    TEST_F(GetAccountAssetTransactionsExecutorTest,
+           GetAccountAssetTransactionsExecutorTestValidMyAcc) {
+      addPerms({shared_model::interface::permissions::Role::kGetMyAccAstTxs});
+
+      commitBlocks();
+
+      auto query =
+          TestQueryBuilder()
+              .creatorAccountId(account->accountId())
+              .getAccountAssetTransactions(account->accountId(), asset_id)
+              .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::TransactionsResponse>(),
+            result->get());
+        ASSERT_EQ(cast_resp.transactions().size(), 2);
+        ASSERT_EQ(cast_resp.transactions()[0].hash(), hash2);
+        ASSERT_EQ(cast_resp.transactions()[1].hash(), hash3);
+      });
+    }
+
+    TEST_F(GetAccountAssetTransactionsExecutorTest,
+           GetAccountAssetTransactionsExecutorTestValidAllAcc) {
+      addPerms({shared_model::interface::permissions::Role::kGetAllAccAstTxs});
+
+      commitBlocks();
+
+      auto query =
+          TestQueryBuilder()
+              .creatorAccountId(account->accountId())
+              .getAccountAssetTransactions(account2->accountId(), asset_id)
+              .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::TransactionsResponse>(),
+            result->get());
+        ASSERT_EQ(cast_resp.transactions().size(), 2);
+        ASSERT_EQ(cast_resp.transactions()[0].hash(), hash2);
+        ASSERT_EQ(cast_resp.transactions()[1].hash(), hash3);
+      });
+    }
+
+    TEST_F(GetAccountAssetTransactionsExecutorTest,
+           GetAccountAssetTransactionsExecutorTestValidDomainAcc) {
+      addPerms(
+          {shared_model::interface::permissions::Role::kGetDomainAccAstTxs});
+
+      commitBlocks();
+
+      auto query =
+          TestQueryBuilder()
+              .creatorAccountId(account->accountId())
+              .getAccountAssetTransactions(account2->accountId(), asset_id)
+              .build();
+      auto result = query_executor->validateAndExecute(query);
+      ASSERT_NO_THROW({
+        const auto &cast_resp = boost::apply_visitor(
+            framework::SpecifiedVisitor<
+                shared_model::interface::TransactionsResponse>(),
+            result->get());
+        ASSERT_EQ(cast_resp.transactions().size(), 2);
+        ASSERT_EQ(cast_resp.transactions()[0].hash(), hash2);
+        ASSERT_EQ(cast_resp.transactions()[1].hash(), hash3);
+      });
+    }
+
+    TEST_F(GetAccountAssetTransactionsExecutorTest,
+           GetAccountAssetTransactionsExecutorTestInvalid) {
+      auto query = TestQueryBuilder()
+                       .creatorAccountId(account->accountId())
+                       .getAccountTransactions(account->accountId())
                        .build();
       auto result = query_executor->validateAndExecute(query);
       ASSERT_TRUE(boost::apply_visitor(

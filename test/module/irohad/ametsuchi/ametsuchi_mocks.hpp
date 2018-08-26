@@ -171,10 +171,10 @@ namespace iroha {
           std::vector<boost::optional<wTransaction>>(
               const std::vector<shared_model::crypto::Hash> &tx_hashes));
       MOCK_METHOD2(getBlocks,
-          std::vector<BlockQuery::wBlock>(
+                   std::vector<BlockQuery::wBlock>(
                        shared_model::interface::types::HeightType, uint32_t));
       MOCK_METHOD1(getBlocksFrom,
-          std::vector<BlockQuery::wBlock>(
+                   std::vector<BlockQuery::wBlock>(
                        shared_model::interface::types::HeightType));
       MOCK_METHOD1(getTopBlocks, std::vector<BlockQuery::wBlock>(uint32_t));
       MOCK_METHOD0(getTopBlock, expected::Result<wBlock, std::string>(void));
@@ -261,6 +261,8 @@ namespace iroha {
      public:
       MOCK_CONST_METHOD0(getWsvQuery, std::shared_ptr<WsvQuery>(void));
       MOCK_CONST_METHOD0(getBlockQuery, std::shared_ptr<BlockQuery>(void));
+      MOCK_CONST_METHOD0(getQueryExecutor,
+                         std::shared_ptr<QueryExecutor>(void));
       MOCK_METHOD0(
           createTemporaryWsv,
           expected::Result<std::unique_ptr<TemporaryWsv>, std::string>(void));
@@ -293,6 +295,19 @@ namespace iroha {
       MOCK_CONST_METHOD0(directory, std::string(void));
       MOCK_CONST_METHOD0(last_id, Identifier(void));
       MOCK_METHOD0(dropAll, void(void));
+    };
+
+    class MockQueryExecutor : public QueryExecutor {
+     public:
+      MOCK_METHOD1(validateAndExecute_,
+                   shared_model::interface::QueryResponse *(
+                       const shared_model::interface::Query &));
+      QueryExecutorResult validateAndExecute(
+          const shared_model::interface::Query &q) override {
+        return QueryExecutorResult(validateAndExecute_(q));
+      }
+      MOCK_METHOD1(validate,
+                   bool(const shared_model::interface::BlocksQuery &));
     };
 
   }  // namespace ametsuchi

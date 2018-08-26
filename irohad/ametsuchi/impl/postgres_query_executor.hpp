@@ -47,7 +47,8 @@ namespace iroha {
       PostgresQueryExecutorVisitor(
           soci::session &sql,
           std::shared_ptr<shared_model::interface::CommonObjectsFactory>
-              factory);
+              factory,
+          KeyValueStorage &block_store);
 
       void setCreatorId(
           const shared_model::interface::types::AccountIdType &creator_id);
@@ -95,8 +96,7 @@ namespace iroha {
     class PostgresQueryExecutor : public QueryExecutor {
      public:
       explicit PostgresQueryExecutor(
-          std::shared_ptr<ametsuchi::Storage> storage,
-          soci::session &sql,
+          std::unique_ptr<soci::session> sql,
           std::shared_ptr<shared_model::interface::CommonObjectsFactory>
               factory,
           KeyValueStorage &block_store);
@@ -107,8 +107,7 @@ namespace iroha {
       bool validate(const shared_model::interface::BlocksQuery &query) override;
 
      private:
-      std::shared_ptr<ametsuchi::Storage> storage_;
-      soci::session &sql_;
+      std::unique_ptr<soci::session> sql_;
       KeyValueStorage &block_store_;
       std::shared_ptr<shared_model::interface::CommonObjectsFactory> factory_;
       PostgresQueryExecutorVisitor visitor_;
