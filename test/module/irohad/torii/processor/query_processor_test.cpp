@@ -38,11 +38,14 @@ class QueryProcessorTest : public ::testing::Test {
   void SetUp() override {
     qry_exec = std::make_shared<MockQueryExecutor>();
     storage = std::make_shared<MockStorage>();
-    qpi = std::make_shared<torii::QueryProcessorImpl>(storage, qry_exec);
+    qpi = std::make_shared<torii::QueryProcessorImpl>(storage, storage);
     wsv_queries = std::make_shared<MockWsvQuery>();
     EXPECT_CALL(*storage, getWsvQuery()).WillRepeatedly(Return(wsv_queries));
     EXPECT_CALL(*storage, getBlockQuery())
         .WillRepeatedly(Return(block_queries));
+    EXPECT_CALL(*storage, createQueryExecutor())
+        .WillRepeatedly(Return(boost::make_optional(
+            std::shared_ptr<QueryExecutor>(qry_exec))));
   }
 
   auto getBlocksQuery(const std::string &creator_account_id) {

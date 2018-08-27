@@ -11,6 +11,7 @@
 #include <boost/format.hpp>
 #include <boost/range/adaptor/transformed.hpp>
 #include <boost/range/algorithm/for_each.hpp>
+#include <soci/postgresql/soci-postgresql.h>
 
 #include "ametsuchi/impl/soci_utils.hpp"
 #include "common/types.hpp"
@@ -413,32 +414,32 @@ namespace iroha {
           % hash_str
       )
                      .str();
-      soci::statement st = (sql_.prepare << cmd);
-      st.exchange(soci::use(creator_id_, "account_id"));
-      st.exchange(soci::into(row, ind));
-
-      st.define_and_bind();
-      try {
-        st.execute();
-      } catch (std::exception &e) {
-        e.what();
-      }
-
+      auto s = sql_.prepare << cmd;
       int has_my_perm = -1;
       int has_all_perm = -1;
-
       std::map<uint64_t, std::vector<std::string>> index;
+        soci::statement st = s;
+        st.exchange(soci::use(creator_id_, "account_id"));
+        st.exchange(soci::into(row, ind));
 
-      processSoci(st, ind, row, [&](T &row) {
-        has_my_perm = row.get<2>();
-        has_all_perm = row.get<3>();
-        if (row.get<0>()) {
-          if (index.find(row.get<0>().get()) == index.end()) {
-            index[row.get<0>().get()] = std::vector<std::string>();
-          }
-          index[row.get<0>().get()].push_back(row.get<1>().get());
+        st.define_and_bind();
+        try {
+          st.execute();
+        } catch (std::exception &e) {
+          e.what();
         }
-      });
+
+        processSoci(st, ind, row, [&](T &row) {
+          has_my_perm = row.get<2>();
+          has_all_perm = row.get<3>();
+          if (row.get<0>()) {
+            if (index.find(row.get<0>().get()) == index.end()) {
+              index[row.get<0>().get()] = std::vector<std::string>();
+            }
+            index[row.get<0>().get()].push_back(row.get<1>().get());
+          }
+        });
+
 
       if (not has_my_perm and not has_all_perm) {
         return statefulFailed();

@@ -53,11 +53,12 @@ class ToriiQueriesTest : public testing::Test {
 
     EXPECT_CALL(*storage, getWsvQuery()).WillRepeatedly(Return(wsv_query));
     EXPECT_CALL(*storage, getBlockQuery()).WillRepeatedly(Return(block_query));
-    EXPECT_CALL(*storage, getQueryExecutor())
-        .WillRepeatedly(Return(query_executor));
+    EXPECT_CALL(*storage, createQueryExecutor())
+        .WillRepeatedly(Return(boost::make_optional(
+            std::shared_ptr<QueryExecutor>(query_executor))));
 
-    auto qpi = std::make_shared<iroha::torii::QueryProcessorImpl>(
-        storage, storage->getQueryExecutor());
+    auto qpi =
+        std::make_shared<iroha::torii::QueryProcessorImpl>(storage, storage);
 
     //----------- Server run ----------------
     runner->append(std::make_unique<torii::QueryService>(qpi))

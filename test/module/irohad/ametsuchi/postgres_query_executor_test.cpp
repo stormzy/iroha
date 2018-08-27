@@ -48,21 +48,12 @@ namespace iroha {
       void SetUp() override {
         AmetsuchiTest::SetUp();
         sql = std::make_unique<soci::session>(soci::postgresql, pgopt_);
-        auto block_store = FlatFile::create("/tmp/block_store");
-        ASSERT_TRUE(block_store);
-        this->block_store = std::move(block_store.get());
 
         auto factory =
             std::make_shared<shared_model::proto::ProtoCommonObjectsFactory<
                 shared_model::validation::FieldValidator>>();
-        query_executor =
-            std::make_unique<iroha::ametsuchi::PostgresQueryExecutor>(
-                std::make_unique<soci::session>(soci::postgresql, pgopt_),
-                factory,
-                *this->block_store);
+        query_executor = storage;
         executor = std::make_unique<PostgresCommandExecutor>(*sql);
-
-        *sql << init_;
 
         ASSERT_TRUE(
             val(execute(buildCommand(TestTransactionBuilder().createRole(
@@ -79,8 +70,15 @@ namespace iroha {
       }
 
       void TearDown() override {
+        sql->close();
         AmetsuchiTest::TearDown();
-        block_store->dropAll();
+      }
+
+      auto executeQuery(shared_model::interface::Query &query) {
+        return query_executor->createQueryExecutor() |
+            [&query](const auto &executor) {
+              return executor->validateAndExecute(query);
+            };
       }
 
       CommandResult execute(
@@ -147,7 +145,7 @@ namespace iroha {
 
       std::unique_ptr<shared_model::interface::Command> command;
 
-      std::unique_ptr<QueryExecutor> query_executor;
+      std::shared_ptr<QueryExecutorFactory> query_executor;
       std::unique_ptr<CommandExecutor> executor;
 
       std::unique_ptr<KeyValueStorage> block_store;
@@ -160,14 +158,20 @@ namespace iroha {
       auto blocks_query = TestBlocksQueryBuilder()
                               .creatorAccountId(account->accountId())
                               .build();
-      ASSERT_TRUE(query_executor->validate(blocks_query));
+      ASSERT_TRUE(query_executor->createQueryExecutor() |
+          [&blocks_query](const auto &executor) {
+            return executor->validate(blocks_query);
+          });
     }
 
     TEST_F(BlocksQueryExecutorTest, BlocksQueryExecutorTestInvalid) {
       auto blocks_query = TestBlocksQueryBuilder()
                               .creatorAccountId(account->accountId())
                               .build();
-      ASSERT_FALSE(query_executor->validate(blocks_query));
+      ASSERT_FALSE(query_executor->createQueryExecutor() |
+          [&blocks_query](const auto &executor) {
+            return executor->validate(blocks_query);
+          });
     }
 
     class GetAccountExecutorTest : public QueryExecutorTest {
@@ -199,7 +203,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccount(account->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -216,7 +220,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccount(account2->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -234,7 +238,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccount(account2->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -250,7 +254,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccount(account2->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_THROW(
           {
             boost::apply_visitor(
@@ -268,7 +272,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccount("some@domain")
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
               shared_model::interface::NoAccountErrorResponse>(),
@@ -305,7 +309,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getSignatories(account->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -325,7 +329,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getSignatories(account2->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -345,7 +349,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getSignatories(account2->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -362,7 +366,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getSignatories(account2->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
               shared_model::interface::StatefulFailedErrorResponse>(),
@@ -378,7 +382,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getSignatories("some@domain")
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
               shared_model::interface::NoSignatoriesErrorResponse>(),
@@ -439,7 +443,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccountAssets(account->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -459,7 +463,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccountAssets(account2->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -479,7 +483,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccountAssets(account2->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -497,7 +501,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccountAssets(account->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
               shared_model::interface::StatefulFailedErrorResponse>(),
@@ -563,7 +567,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccountDetail(account->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -581,7 +585,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccountDetail(account2->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -600,7 +604,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccountDetail(account2->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -616,7 +620,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccountDetail(account2->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
               shared_model::interface::StatefulFailedErrorResponse>(),
@@ -630,7 +634,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccountDetail("some@domain")
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
               shared_model::interface::NoAccountDetailErrorResponse>(),
@@ -643,7 +647,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccountDetail(account2->accountId(), "key")
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -664,7 +668,7 @@ namespace iroha {
               .creatorAccountId(account->accountId())
               .getAccountDetail(account2->accountId(), "", account->accountId())
               .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -685,7 +689,7 @@ namespace iroha {
                        .getAccountDetail(
                            account2->accountId(), "key", account->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -710,7 +714,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getRoles()
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp =
             boost::apply_visitor(framework::SpecifiedVisitor<
@@ -728,7 +732,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getRoles()
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
               shared_model::interface::StatefulFailedErrorResponse>(),
@@ -748,7 +752,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getRolePermissions("perms")
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -766,7 +770,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getRolePermissions("some")
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
               shared_model::interface::NoRolesErrorResponse>(),
@@ -778,7 +782,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getRolePermissions("role")
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
               shared_model::interface::StatefulFailedErrorResponse>(),
@@ -807,7 +811,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAssetInfo(asset_id)
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp =
             boost::apply_visitor(framework::SpecifiedVisitor<
@@ -826,7 +830,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAssetInfo("some#domain")
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
               shared_model::interface::NoAssetErrorResponse>(),
@@ -838,7 +842,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAssetInfo(asset_id)
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
               shared_model::interface::StatefulFailedErrorResponse>(),
@@ -850,26 +854,14 @@ namespace iroha {
       void SetUp() override {
         QueryExecutorTest::SetUp();
         std::string block_store_dir = "/tmp/block_store";
-        auto storageResult =
-            StorageImpl::create(block_store_dir, pgopt_, factory);
-        storageResult.match(
-            [&](expected::Value<std::shared_ptr<ametsuchi::StorageImpl>>
-                    &_storage) { storage = _storage.value; },
-            [&](expected::Error<std::string> &error) {
-              FAIL() << error.error;
-            });
-        auto block_store = FlatFile::create(block_store_dir);
-        ASSERT_TRUE(block_store);
-        this->block_store = std::move(block_store.get());
-
+        auto block_converter =
+            std::make_shared<shared_model::proto::ProtoBlockJsonConverter>();
         auto factory =
             std::make_shared<shared_model::proto::ProtoCommonObjectsFactory<
                 shared_model::validation::FieldValidator>>();
-        query_executor =
-            std::make_unique<iroha::ametsuchi::PostgresQueryExecutor>(
-                std::make_unique<soci::session>(soci::postgresql, pgopt_),
-                factory,
-                *this->block_store);
+        auto block_store = FlatFile::create(block_store_dir);
+        ASSERT_TRUE(block_store);
+        this->block_store = std::move(block_store.get());
 
         account2 = clone(TestAccountBuilder()
                              .domainId(domain->domainId())
@@ -978,7 +970,6 @@ namespace iroha {
       }
 
       const std::string asset_id = "coin#domain";
-      std::shared_ptr<iroha::ametsuchi::Storage> storage;
       std::unique_ptr<shared_model::interface::Account> account2;
       shared_model::crypto::Hash hash1;
       shared_model::crypto::Hash hash2;
@@ -998,7 +989,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccountTransactions(account->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -1021,7 +1012,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccountTransactions(account2->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -1044,7 +1035,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccountTransactions(account2->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -1063,7 +1054,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccountTransactions(account->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
               shared_model::interface::StatefulFailedErrorResponse>(),
@@ -1088,7 +1079,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getTransactions(hashes)
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -1116,7 +1107,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getTransactions(hashes)
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -1142,7 +1133,7 @@ namespace iroha {
               .creatorAccountId(account->accountId())
               .getAccountAssetTransactions(account->accountId(), asset_id)
               .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -1165,7 +1156,7 @@ namespace iroha {
               .creatorAccountId(account->accountId())
               .getAccountAssetTransactions(account2->accountId(), asset_id)
               .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -1189,7 +1180,7 @@ namespace iroha {
               .creatorAccountId(account->accountId())
               .getAccountAssetTransactions(account2->accountId(), asset_id)
               .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_NO_THROW({
         const auto &cast_resp = boost::apply_visitor(
             framework::SpecifiedVisitor<
@@ -1207,7 +1198,7 @@ namespace iroha {
                        .creatorAccountId(account->accountId())
                        .getAccountTransactions(account->accountId())
                        .build();
-      auto result = query_executor->validateAndExecute(query);
+      auto result = executeQuery(query);
       ASSERT_TRUE(boost::apply_visitor(
           shared_model::interface::QueryErrorResponseChecker<
               shared_model::interface::StatefulFailedErrorResponse>(),

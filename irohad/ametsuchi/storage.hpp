@@ -8,9 +8,13 @@
 
 #include <rxcpp/rx-observable.hpp>
 #include <vector>
+
+#include "ametsuchi/block_query_factory.hpp"
+#include "ametsuchi/os_persistent_state_factory.hpp"
 #include "ametsuchi/mutable_factory.hpp"
+#include "ametsuchi/peer_query_factory.hpp"
 #include "ametsuchi/temporary_factory.hpp"
-#include "ametsuchi/query_executor.hpp"
+#include "ametsuchi/query_executor_factory.hpp"
 #include "common/result.hpp"
 
 namespace shared_model {
@@ -30,13 +34,16 @@ namespace iroha {
      * Storage interface, which allows queries on current committed state, and
      * creation of state which can be mutated with blocks and transactions
      */
-    class Storage : public TemporaryFactory, public MutableFactory {
+    class Storage : public TemporaryFactory,
+                    public MutableFactory,
+                    public PeerQueryFactory,
+                    public BlockQueryFactory,
+                    public OsPersistentStateFactory,
+                    public QueryExecutorFactory {
      public:
       virtual std::shared_ptr<WsvQuery> getWsvQuery() const = 0;
 
       virtual std::shared_ptr<BlockQuery> getBlockQuery() const = 0;
-
-      virtual std::shared_ptr<QueryExecutor> getQueryExecutor() const = 0;
 
       /**
        * Raw insertion of blocks without validation
