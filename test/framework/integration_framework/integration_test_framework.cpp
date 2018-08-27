@@ -135,6 +135,7 @@ namespace integration_framework {
         ->getPeerCommunicationService()
         ->on_proposal()
         .subscribe([this](auto proposal) {
+          log_->info("Before push to proposal queue");
           proposal_queue_.push(proposal);
           log_->info("proposal");
           queue_cond.notify_all();
@@ -236,7 +237,9 @@ namespace integration_framework {
     log_->info("send transactions");
     const auto &transactions = tx_sequence.transactions();
 
-    boost::barrier bar(2);
+    std::mutex m;
+    std::condition_variable cv;
+    bool processed = false;
 
     // subscribe on status bus and save all stateless statuses into a vector
     std::vector<shared_model::proto::TransactionResponse> statuses;
@@ -265,7 +268,10 @@ namespace integration_framework {
               statuses.push_back(*std::static_pointer_cast<
                                  shared_model::proto::TransactionResponse>(s));
             },
-            [&bar] { bar.wait(); });
+            [&cv, &processed] {
+              processed = true;
+              cv.notify_all();
+            });
 
     // put all transactions to the TxList and send them to iroha
     iroha::protocol::TxList tx_list;
@@ -279,7 +285,10 @@ namespace integration_framework {
         tx_list);
 
     // make sure that the first (stateless) status is come
-    bar.wait();
+    {
+      std::unique_lock<std::mutex> lk(m);
+      cv.wait(lk, [&] { return processed; });
+    }
 
     validation(statuses);
     return *this;
