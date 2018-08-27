@@ -45,10 +45,10 @@ TEST(RegressionTest, SequentialInitialization) {
                         generateKeypair())
                 .finish();
 
-  auto checkStatelessValid = [](auto &status) {
+  auto check_enough_signatures_collected_status = [](auto &status) {
     ASSERT_NO_THROW(boost::apply_visitor(
         framework::SpecifiedVisitor<
-            shared_model::interface::StatelessValidTxResponse>(),
+            shared_model::interface::EnoughSignaturesCollectedResponse>(),
         status.get()));
   };
   auto checkProposal = [](auto &proposal) {
@@ -59,7 +59,7 @@ TEST(RegressionTest, SequentialInitialization) {
   {
     integration_framework::IntegrationTestFramework(1, dbname, [](auto &) {})
         .setInitialState(kAdminKeypair)
-        .sendTx(tx, checkStatelessValid)
+        .sendTx(tx, check_enough_signatures_collected_status)
         .skipProposal()
         .checkVerifiedProposal([](auto &proposal) {
           ASSERT_EQ(proposal->transactions().size(), 0);
@@ -68,7 +68,7 @@ TEST(RegressionTest, SequentialInitialization) {
   {
     integration_framework::IntegrationTestFramework(1, dbname)
         .setInitialState(kAdminKeypair)
-        .sendTx(tx, checkStatelessValid)
+        .sendTx(tx, check_enough_signatures_collected_status)
         .checkProposal(checkProposal)
         .checkVerifiedProposal([](auto &proposal) {
           ASSERT_EQ(proposal->transactions().size(), 0);
@@ -131,11 +131,7 @@ TEST(RegressionTest, StateRecovery) {
 
   {
     integration_framework::IntegrationTestFramework(
-        1,
-        dbname,
-        [](auto &) {},
-        false,
-        path)
+        1, dbname, [](auto &) {}, false, path)
         .setInitialState(kAdminKeypair)
         .sendTx(tx)
         .checkProposal(checkOne)
@@ -144,11 +140,7 @@ TEST(RegressionTest, StateRecovery) {
   }
   {
     integration_framework::IntegrationTestFramework(
-        1,
-        dbname,
-        [](auto &itf) { itf.done(); },
-        false,
-        path)
+        1, dbname, [](auto &itf) { itf.done(); }, false, path)
         .recoverState(kAdminKeypair)
         .sendQuery(makeQuery(2, kAdminKeypair), checkQuery)
         .done();

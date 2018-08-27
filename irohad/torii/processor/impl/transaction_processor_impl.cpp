@@ -156,7 +156,7 @@ namespace iroha {
       log_->info("propagating tx");
       status_bus_->publish(
           shared_model::builder::DefaultTransactionStatusBuilder()
-              .mstPassed()
+              .enoughSignaturesCollected()
               .txHash(transaction->hash())
               .build());
       pcs_->propagate_transaction(transaction);

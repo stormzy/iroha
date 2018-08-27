@@ -112,7 +112,7 @@ TEST_F(MstPipelineTest, OnePeerSendsTest) {
         ASSERT_NO_THROW(boost::apply_visitor(
             SpecifiedVisitor<interface::MstPendingResponse>(), resp.get()));
       };
-//  auto checkMstPassedTxStatus =
+//  auto checkEnoughSignaturesCollectedStatus =
 //      [](const shared_model::proto::TransactionResponse &resp) {
 //        ASSERT_NO_THROW(boost::apply_visitor(
 //            SpecifiedVisitor<interface::MstPendingResponse>(), resp.get()));

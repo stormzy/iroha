@@ -276,7 +276,7 @@ TEST_F(ToriiServiceTest, StatusWhenBlocking) {
     client2.Status(tx_request, toriiResponse);
 
     ASSERT_EQ(toriiResponse.tx_status(),
-              iroha::protocol::TxStatus::STATELESS_VALIDATION_SUCCESS);
+              iroha::protocol::TxStatus::ENOUGH_SIGNATURES_COLLECTED);
   }
 
   // create block from the all transactions but the last one

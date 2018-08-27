@@ -6,6 +6,7 @@
 #include "backend/protobuf/common_objects/trivial_proto.hpp"
 #include "endpoint.pb.h"
 #include "interfaces/transaction_responses/committed_tx_response.hpp"
+#include "interfaces/transaction_responses/enough_signatures_collected_response.hpp"
 #include "interfaces/transaction_responses/mst_expired_response.hpp"
 #include "interfaces/transaction_responses/mst_pending_response.hpp"
 #include "interfaces/transaction_responses/not_received_tx_response.hpp"
@@ -14,7 +15,6 @@
 #include "interfaces/transaction_responses/stateless_failed_tx_response.hpp"
 #include "interfaces/transaction_responses/stateless_valid_tx_response.hpp"
 #include "interfaces/transaction_responses/tx_response.hpp"
-#include "interfaces/transaction_responses/mst_passed_response.hpp"
 
 namespace shared_model {
   namespace proto {
@@ -38,7 +38,8 @@ namespace shared_model {
                                                iroha::protocol::ToriiResponse>;
     using MstPendingResponse = TrivialProto<interface::MstPendingResponse,
                                             iroha::protocol::ToriiResponse>;
-    using MstPassedResponse = TrivialProto<interface::MstPassedResponse,
-                                            iroha::protocol::ToriiResponse>;
+    using EnoughSignaturesCollectedResponse =
+        TrivialProto<interface::EnoughSignaturesCollectedResponse,
+                     iroha::protocol::ToriiResponse>;
   }  // namespace proto
 }  // namespace shared_model

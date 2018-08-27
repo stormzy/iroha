@@ -34,7 +34,7 @@ namespace shared_model {
 
       TransactionStatusBuilder mstPending();
 
-      TransactionStatusBuilder mstPassed();
+      TransactionStatusBuilder enoughSignaturesCollected();
 
       TransactionStatusBuilder statefulValidationSuccess();
 

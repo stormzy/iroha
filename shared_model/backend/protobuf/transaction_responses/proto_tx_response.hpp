@@ -22,15 +22,16 @@ namespace shared_model {
                                TransactionResponse> {
      public:
       /// Type of variant, that handle all concrete tx responses in the system
-      using ProtoResponseVariantType = boost::variant<StatelessFailedTxResponse,
-                                                      StatelessValidTxResponse,
-                                                      StatefulFailedTxResponse,
-                                                      StatefulValidTxResponse,
-                                                      CommittedTxResponse,
-                                                      MstExpiredResponse,
-                                                      NotReceivedTxResponse,
-                                                      MstPendingResponse,
-                                                      MstPassedResponse>;
+      using ProtoResponseVariantType =
+          boost::variant<StatelessFailedTxResponse,
+                         StatelessValidTxResponse,
+                         StatefulFailedTxResponse,
+                         StatefulValidTxResponse,
+                         CommittedTxResponse,
+                         MstExpiredResponse,
+                         NotReceivedTxResponse,
+                         MstPendingResponse,
+                         EnoughSignaturesCollectedResponse>;
 
       /// Type with list of types in ResponseVariantType
       using ProtoResponseListType = ProtoResponseVariantType::types;
@@ -117,7 +118,7 @@ namespace shared_model {
             *variant_,
             [](const StatelessValidTxResponse &) { return 1; },
             [](const MstPendingResponse &) { return 2; },
-            [](const MstPassedResponse &) { return 3; },
+            [](const EnoughSignaturesCollectedResponse &) { return 3; },
             [](const StatefulValidTxResponse &) { return 4; },
             [](const CommittedTxResponse &) { return 5; },
             [](const StatelessFailedTxResponse &) { return 6; },

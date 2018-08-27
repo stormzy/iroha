@@ -116,12 +116,10 @@ TEST_F(TransactionProcessorTest, TransactionProcessorOnProposalTest) {
   for (size_t i = 0; i < proposal_size; i++) {
     auto &&tx = TestTransactionBuilder().createdTime(i).build();
     txs.push_back(tx);
-    status_map[tx.hash()] =
-        status_builder.notReceived().txHash(tx.hash()).build();
   }
 
   EXPECT_CALL(*status_bus, publish(_))
-      .Times(proposal_size)
+      .Times(proposal_size * 2)
       .WillRepeatedly(testing::Invoke([this](auto response) {
         status_map[response->transactionHash()] = response;
       }));
@@ -211,12 +209,10 @@ TEST_F(TransactionProcessorTest, TransactionProcessorBlockCreatedTest) {
   for (size_t i = 0; i < proposal_size; i++) {
     auto &&tx = TestTransactionBuilder().createdTime(i).build();
     txs.push_back(tx);
-    status_map[tx.hash()] =
-        status_builder.notReceived().txHash(tx.hash()).build();
   }
 
   EXPECT_CALL(*status_bus, publish(_))
-      .Times(txs.size() * 2)
+      .Times(txs.size() * 3)
       .WillRepeatedly(testing::Invoke([this](auto response) {
         status_map[response->transactionHash()] = response;
       }));
@@ -255,8 +251,9 @@ TEST_F(TransactionProcessorTest, TransactionProcessorBlockCreatedTest) {
   // Note blocks_notifier hasn't invoked on_completed, so
   // transactions are not commited
 
-  SCOPED_TRACE("Stateful valid status verification");
-  validateStatuses<shared_model::interface::StatefulValidTxResponse>(txs);
+  SCOPED_TRACE("Stateful Valid status verification");
+  validateStatuses<shared_model::interface::StatefulValidTxResponse>(
+      txs);
 }
 
 /**
@@ -271,12 +268,10 @@ TEST_F(TransactionProcessorTest, TransactionProcessorOnCommitTest) {
   for (size_t i = 0; i < proposal_size; i++) {
     auto &&tx = TestTransactionBuilder().createdTime(i).build();
     txs.push_back(tx);
-    status_map[tx.hash()] =
-        status_builder.notReceived().txHash(tx.hash()).build();
   }
 
   EXPECT_CALL(*status_bus, publish(_))
-      .Times(txs.size() * 3)
+      .Times(txs.size() * 4)
       .WillRepeatedly(testing::Invoke([this](auto response) {
         status_map[response->transactionHash()] = response;
       }));

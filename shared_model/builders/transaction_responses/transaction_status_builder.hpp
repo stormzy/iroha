@@ -55,9 +55,9 @@ namespace shared_model {
         return copy;
       }
 
-      TransactionStatusBuilder mstPassed() {
+      TransactionStatusBuilder enoughSignaturesCollected() {
         TransactionStatusBuilder copy(*this);
-        copy.builder_ = this->builder_.mstPassed();
+        copy.builder_ = this->builder_.enoughSignaturesCollected();
         return copy;
       }
 

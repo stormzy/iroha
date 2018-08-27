@@ -54,10 +54,10 @@ namespace shared_model {
       return copy;
     }
 
-    TransactionStatusBuilder TransactionStatusBuilder::mstPassed() {
+    TransactionStatusBuilder TransactionStatusBuilder::enoughSignaturesCollected() {
       TransactionStatusBuilder copy(*this);
       copy.tx_response_.set_tx_status(
-          iroha::protocol::TxStatus::MST_PASSED);
+          iroha::protocol::TxStatus::ENOUGH_SIGNATURES_COLLECTED);
       return copy;
     }
 
