@@ -81,7 +81,7 @@ OnDemandOrderingServiceImpl::onRequestProposal(transport::RoundType round) {
 // ---------------------------------| Private |---------------------------------
 
 void OnDemandOrderingServiceImpl::packNextProposals(
-    transport::RoundType round) {
+    const transport::RoundType &round) {
   auto close_round = [this](transport::RoundType round) {
     auto it = current_proposals_.find(round);
     if (it != current_proposals_.end()) {
@@ -96,12 +96,47 @@ void OnDemandOrderingServiceImpl::packNextProposals(
     }
   };
 
+  /*
+   * The possible cases can be visualised as a diagram, where:
+   * o - current round, x - next round, v - target round
+   *
+   *   0 1 2
+   * 0 o x v
+   * 1 x v .
+   * 2 v . .
+   *
+   * Reject case:
+   *
+   *   0 1 2 3
+   * 0 . o x v
+   * 1 x v . .
+   * 2 v . . .
+   *
+   * (0,1) - current round. Round (0,2) is closed for transactions.
+   * Round (0,3) is now receiving transactions.
+   * Rounds (1,) and (2,) do not change.
+   *
+   * Commit case:
+   *
+   *   0 1 2
+   * 0 . . .
+   * 1 o x v
+   * 2 x v .
+   * 3 v . .
+   *
+   * (1,0) - current round. The diagram is similar to the initial case.
+   */
+
+  // close next reject round
   close_round({round.first, round.second + 1});
+
   if (round.second == kFirstRound) {
     // new block round
     close_round({round.first + 1, round.second});
 
+    // remove current queues
     current_proposals_.clear();
+    // initialize the 3 diagonal rounds from the commit case diagram
     for (size_t i = 0; i <= 2; ++i) {
       current_proposals_[{round.first + i, round.second + 2 - i}];
     }
@@ -112,7 +147,7 @@ void OnDemandOrderingServiceImpl::packNextProposals(
 }
 
 OnDemandOrderingServiceImpl::ProposalType
-OnDemandOrderingServiceImpl::emitProposal(transport::RoundType round) {
+OnDemandOrderingServiceImpl::emitProposal(const transport::RoundType &round) {
   iroha::protocol::Proposal proto_proposal;
   proto_proposal.set_height(round.first);
   proto_proposal.set_created_time(iroha::time::now());

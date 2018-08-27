@@ -25,13 +25,17 @@ namespace iroha {
        * @param transaction_limit - number of maximum transactions in a one
        * proposal
        * @param number_of_proposals - number of stored proposals, older will be
-       * removed
-       * @param initial_round - first round of agreement
+       * removed. Default value is 3
+       * @param initial_round - first round of agreement.
+       * Default value is {2, 1} since genesis block height is 1
        */
-      OnDemandOrderingServiceImpl(
+      explicit OnDemandOrderingServiceImpl(
           size_t transaction_limit,
-          size_t number_of_proposals = 3,
-          const transport::RoundType &initial_round = std::make_pair(2, 1));
+          size_t number_of_proposals,
+          const transport::RoundType &initial_round);
+
+      explicit OnDemandOrderingServiceImpl(size_t transaction_limit)
+          : OnDemandOrderingServiceImpl(transaction_limit, 3, {2, 1}) {}
 
       // --------------------- | OnDemandOrderingService |_---------------------
 
@@ -50,7 +54,7 @@ namespace iroha {
        * Packs new proposals and creates new rounds
        * Note: method is not thread-safe
        */
-      void packNextProposals(transport::RoundType round);
+      void packNextProposals(const transport::RoundType &round);
 
       /**
        * Removes last elements if it is required
@@ -63,7 +67,7 @@ namespace iroha {
        * @return packed proposal from the given round queue
        * Note: method is not thread-safe
        */
-      ProposalType emitProposal(transport::RoundType round);
+      ProposalType emitProposal(const transport::RoundType &round);
 
       /**
        * Max number of transaction in one proposal

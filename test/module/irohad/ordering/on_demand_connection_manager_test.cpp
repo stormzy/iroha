@@ -38,7 +38,7 @@ struct OnDemandConnectionManagerTest : public ::testing::Test {
           .WillRepeatedly(CreateAndSave(&ptr));
     };
 
-    for (auto pair : boost::combine(cpeers.peers, connections)) {
+    for (auto &&pair : boost::combine(cpeers.peers, connections)) {
       set(boost::get<0>(pair), boost::get<1>(pair));
     }
 
@@ -61,7 +61,7 @@ struct OnDemandConnectionManagerTest : public ::testing::Test {
  * @then new peers are requested from factory
  */
 TEST_F(OnDemandConnectionManagerTest, FactoryUsed) {
-  for (auto peer : connections) {
+  for (auto &peer : connections) {
     ASSERT_NE(peer, nullptr);
   }
 }
