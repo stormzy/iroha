@@ -30,13 +30,12 @@ namespace shared_model {
           return false;
         }
 
-        return std::none_of(++txs.begin(),
+        return std::all_of(++txs.begin(),
                             txs.end(),
                             [front_batch_meta = batch_meta.value()](
                                 const std::shared_ptr<Transaction> tx) {
                               return tx->batchMeta()
-                                  ? **tx->batchMeta() != *front_batch_meta
-                                  : false;
+                                  and **tx->batchMeta() == *front_batch_meta;
                             });
       };
     }  // namespace

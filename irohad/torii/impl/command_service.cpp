@@ -100,10 +100,10 @@ namespace torii {
         shared_model::proto::Transaction,
         shared_model::validation::DefaultSignedTransactionValidator>();
 
-    auto batch_result = tx_builder.build(request) | [](auto &iroha_tx) {
+    auto batch_result = tx_builder.build(request) | [](const auto &iroha_tx) {
       return shared_model::interface::TransactionBatch::createTransactionBatch(
           std::make_shared<shared_model::proto::Transaction>(
-              std::move(iroha_tx.value)),
+              iroha_tx),
           shared_model::validation::DefaultSignedTransactionValidator());
     };
 
