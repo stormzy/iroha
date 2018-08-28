@@ -48,13 +48,6 @@ namespace torii {
     CommandService &operator=(const CommandService &) = delete;
 
     /**
-     * Forward batch to transaction processor and set statuses of all
-     * transactions inside it
-     * @param batch to be processed
-     */
-    void processBatch(const shared_model::interface::TransactionBatch &batch);
-
-    /**
      * Actual implementation of sync Torii in CommandService
      * @param tx - Transaction we've received
      */
@@ -157,6 +150,13 @@ namespace torii {
     void pushStatus(const std::string &who,
                     const shared_model::crypto::Hash &hash,
                     const iroha::protocol::ToriiResponse &response);
+
+    /**
+     * Forward batch to transaction processor and set statuses of all
+     * transactions inside it
+     * @param batch to be processed
+     */
+    void processBatch(const shared_model::interface::TransactionBatch &batch);
 
    private:
     using CacheType = iroha::cache::Cache<shared_model::crypto::Hash,
