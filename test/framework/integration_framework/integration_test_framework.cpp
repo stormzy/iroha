@@ -268,7 +268,8 @@ namespace integration_framework {
               statuses.push_back(*std::static_pointer_cast<
                                  shared_model::proto::TransactionResponse>(s));
             },
-            [&cv, &processed] {
+            [&cv, &m, &processed] {
+              std::lock_guard<std::mutex> lock(m);
               processed = true;
               cv.notify_all();
             });
