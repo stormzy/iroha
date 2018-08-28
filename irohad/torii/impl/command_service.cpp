@@ -80,7 +80,7 @@ namespace torii {
     tx_processor_->batchHandle(batch);
     const auto &txs = batch.transactions();
     std::for_each(txs.begin(), txs.end(), [this](const auto &tx) {
-      auto tx_hash = tx->hash();
+      const auto &tx_hash = tx->hash();
       if (cache_->findItem(tx_hash) and tx->quorum() < 2) {
         log_->warn("Found transaction {} in cache, ignoring", tx_hash.hex());
         return;
@@ -88,7 +88,7 @@ namespace torii {
 
       this->pushStatus(
           "ToriiBatchProcessor",
-          std::move(tx_hash),
+          tx_hash,
           makeResponse(
               tx_hash,
               iroha::protocol::TxStatus::STATELESS_VALIDATION_SUCCESS));
@@ -96,51 +96,38 @@ namespace torii {
   }
 
   void CommandService::Torii(const iroha::protocol::Transaction &request) {
-    shared_model::proto::TransportBuilder<
+    auto tx_builder = shared_model::proto::TransportBuilder<
         shared_model::proto::Transaction,
-        shared_model::validation::DefaultSignedTransactionValidator>()
-        .build(request)
-        .match(
-            [this](
-                // success case
-                iroha::expected::Value<shared_model::proto::Transaction>
-                    &iroha_tx) {
-              shared_model::interface::TransactionBatch::createTransactionBatch(
-                  std::make_shared<shared_model::proto::Transaction>(
-                      std::move(iroha_tx.value)),
-                  shared_model::validation::DefaultSignedTransactionValidator())
-                  .match([this](iroha::expected::Value<
-                                shared_model::interface::TransactionBatch>
-                                    &batch) { processBatch(batch.value); },
-                         [this, &iroha_tx](
-                             const iroha::expected::Error<std::string> &error) {
-                           log_->warn(
-                               "Could not create batch out of transaction with "
-                               "hash {}: {}",
-                               iroha_tx.value.hash().hex(),
-                               error.error);
-                         });
-            },
-            [this, &request](const auto &error) {
-              // getting hash from invalid transaction
-              auto blobPayload =
-                  shared_model::proto::makeBlob(request.payload());
-              auto tx_hash =
-                  shared_model::crypto::DefaultHashProvider::makeHash(
-                      blobPayload);
-              log_->warn("Stateless invalid tx: {}, hash: {}",
-                         error.error,
-                         tx_hash.hex());
+        shared_model::validation::DefaultSignedTransactionValidator>();
 
-              // setting response
-              auto response = makeResponse(
-                  tx_hash,
-                  iroha::protocol::TxStatus::STATELESS_VALIDATION_FAILED);
-              response.set_error_message(std::move(error.error));
+    auto batch_result = tx_builder.build(request) | [](auto &iroha_tx) {
+      return shared_model::interface::TransactionBatch::createTransactionBatch(
+          std::make_shared<shared_model::proto::Transaction>(
+              std::move(iroha_tx.value)),
+          shared_model::validation::DefaultSignedTransactionValidator());
+    };
 
-              this->pushStatus(
-                  "Torii", std::move(tx_hash), std::move(response));
-            });
+    batch_result.match(
+        [this](iroha::expected::Value<shared_model::interface::TransactionBatch>
+                   &batch) { processBatch(batch.value); },
+        [this, &request](const auto &error) {
+          // getting hash from invalid transaction
+          auto blobPayload = shared_model::proto::makeBlob(request.payload());
+          auto tx_hash =
+              shared_model::crypto::DefaultHashProvider::makeHash(blobPayload);
+          log_->warn(
+              "Could not create transaction batch of single tx: {}, "
+              "hash: {}",
+              error.error,
+              tx_hash.hex());
+
+          // setting response
+          auto response = makeResponse(
+              tx_hash, iroha::protocol::TxStatus::STATELESS_VALIDATION_FAILED);
+          response.set_error_message(std::move(error.error));
+
+          this->pushStatus("Torii", std::move(tx_hash), std::move(response));
+        });
   }
 
   void CommandService::ListTorii(const iroha::protocol::TxList &tx_list) {
@@ -154,9 +141,8 @@ namespace torii {
                 iroha::expected::Value<
                     shared_model::interface::TransactionSequence>
                     &tx_sequence) {
-              const auto &batches = tx_sequence.value.batches();
-              for (size_t i = 0; i < batches.size(); ++i) {
-                processBatch(batches[i]);
+              for (const auto &batch : tx_sequence.value.batches()) {
+                processBatch(batch);
               }
             },
             [this, &tx_list](auto &error) {

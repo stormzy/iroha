@@ -53,11 +53,7 @@ namespace shared_model {
       std::string reason_name = "Transaction batch: ";
       validation::ReasonsGroupType batch_reason;
       batch_reason.first = reason_name;
-      if (boost::empty(transactions)) {
-        batch_reason.second.emplace_back(
-            "Provided transactions are not from the same batch");
-      }
-      if (not allTxsInSameBatch(transactions)) {
+      if (boost::empty(transactions) or not allTxsInSameBatch(transactions)) {
         batch_reason.second.emplace_back(
             "Provided transactions are not from the same batch");
       }
@@ -81,11 +77,9 @@ namespace shared_model {
 
       if (not batch_reason.second.empty()) {
         answer.addReason(std::move(batch_reason));
-      }
-
-      if (answer.hasErrors()) {
         return iroha::expected::makeError(answer.reason());
       }
+
       return iroha::expected::makeValue(TransactionBatch(transactions));
     }
 
