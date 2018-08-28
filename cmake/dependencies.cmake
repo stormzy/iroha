@@ -1,10 +1,17 @@
 find_package(PackageHandleStandardArgs)
 
+if (USE_LIBIROHA)
+  find_package(libiroha)
+endif()
+
 include(ExternalProject)
-set(EP_PREFIX "${PROJECT_SOURCE_DIR}/external")
-set_directory_properties(PROPERTIES
-    EP_PREFIX ${EP_PREFIX}
-    )
+
+if (NOT USE_LIBIROHA)
+  set(EP_PREFIX "${PROJECT_SOURCE_DIR}/external")
+  set_directory_properties(PROPERTIES
+      EP_PREFIX ${EP_PREFIX}
+      )
+endif()
 
 # Project dependencies.
 find_package(Threads REQUIRED)
@@ -73,16 +80,18 @@ find_package(Boost 1.65.0 REQUIRED
     system
     thread
     )
-add_library(boost INTERFACE IMPORTED)
-set_target_properties(boost PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIRS}
-    INTERFACE_LINK_LIBRARIES "${Boost_LIBRARIES}"
-    )
+if (NOT TARGET boost)
+  add_library(boost INTERFACE IMPORTED)
+  set_target_properties(boost PROPERTIES
+      INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIRS}
+      INTERFACE_LINK_LIBRARIES "${Boost_LIBRARIES}"
+      )
 
-if(ENABLE_LIBS_PACKAGING)
-  foreach (library ${Boost_LIBRARIES})
-    add_install_step_for_lib(${library})
-  endforeach(library)
+  if(ENABLE_LIBS_PACKAGING)
+    foreach (library ${Boost_LIBRARIES})
+      add_install_step_for_lib(${library})
+    endforeach(library)
+  endif()
 endif()
 
 ##########################
@@ -96,7 +105,3 @@ endif()
 #          ed25519/sha3           #
 ###################################
 find_package(ed25519)
-
-if (USE_LIBIROHA)
-  find_package(libiroha)
-endif()
