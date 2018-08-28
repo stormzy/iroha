@@ -6,6 +6,7 @@
 add_library(acceptance_fixture acceptance_fixture.cpp)
 target_link_libraries(acceptance_fixture
     gtest::gtest
+    gmock::gmock
     integration_framework
     shared_model_proto_builders
     )
@@ -91,7 +92,20 @@ addtest(set_account_detail_test set_account_detail_test.cpp)
 target_link_libraries(set_account_detail_test
     acceptance_fixture
     )
+
 addtest(get_roles_test get_roles_test.cpp)
 target_link_libraries(get_roles_test
+    acceptance_fixture
+    )
+
+addtest(create_asset_test create_asset_test.cpp)
+target_link_libraries(create_asset_test
+    acceptance_fixture
+    )
+
+addtest(get_account_asset_txs_test
+    get_account_asset_txs_test.cpp
+    )
+target_link_libraries(get_account_asset_txs_test
     acceptance_fixture
     )

@@ -53,7 +53,6 @@ namespace iroha {
 
       // processing
       std::shared_ptr<MstProcessor> mst_processor_;
-      std::vector<shared_model::interface::types::HashType> current_txs_hashes_;
 
       std::shared_ptr<iroha::torii::StatusBus> status_bus_;
 
@@ -61,6 +60,9 @@ namespace iroha {
       rxcpp::subjects::subject<
           std::shared_ptr<shared_model::interface::TransactionResponse>>
           notifier_;
+
+      // keeps hashes of transaction, which were committed during this round
+      std::vector<shared_model::interface::types::HashType> current_txs_hashes_;
 
       logger::Logger log_;
 
