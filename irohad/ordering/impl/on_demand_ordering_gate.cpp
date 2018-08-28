@@ -29,6 +29,7 @@ OnDemandOrderingGate::OnDemandOrderingGate(
                          current_round_ = {block.height, 1};
                        },
                        [this](EmptyEvent empty) {
+                         // no blocks committed, increment reject round
                          current_round_ = {current_round_.first,
                                            current_round_.second + 1};
                        });
