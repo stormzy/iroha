@@ -25,45 +25,25 @@ struct OnDemandOrderingGateTest : public ::testing::Test {
   void SetUp() override {
     ordering_service = std::make_shared<MockOnDemandOrderingService>();
     notification = std::make_shared<MockOdOsNotification>();
-    proposal_gate = std::make_shared<MockProposalGate>();
-    ordering_gate = std::make_shared<OnDemandOrderingGate>(
-        ordering_service,
-        notification,
-        proposal_gate,
-        [this](auto tx) {
-          return shared_model::interface::TransactionBatch(
-              {std::const_pointer_cast<
-                  shared_model::interface::types::SharedTxsCollectionType::
-                      value_type::element_type>(tx)});
-        },
-        rounds.get_observable(),
-        initial_round);
+    auto ufactory = std::make_unique<MockUnsafeProposalFactory>();
+    factory = ufactory.get();
+    ordering_gate =
+        std::make_shared<OnDemandOrderingGate>(ordering_service,
+                                               notification,
+                                               rounds.get_observable(),
+                                               std::move(ufactory),
+                                               initial_round);
   }
 
   rxcpp::subjects::subject<OnDemandOrderingGate::BlockRoundEventType> rounds;
   rxcpp::subjects::subject<ProposalOutcomeType> outcomes;
   std::shared_ptr<MockOnDemandOrderingService> ordering_service;
   std::shared_ptr<MockOdOsNotification> notification;
-  std::shared_ptr<MockProposalGate> proposal_gate;
+  MockUnsafeProposalFactory *factory;
   std::shared_ptr<OnDemandOrderingGate> ordering_gate;
 
   const RoundType initial_round = {2, 1};
 };
-
-/**
- * @given initialized ordering gate
- * @when a transaction is received
- * @then it is passed to the ordering service
- */
-TEST_F(OnDemandOrderingGateTest, propagateTransaction) {
-  auto tx = std::make_shared<MockTransaction>();
-  OdOsNotification::CollectionType collection{tx};
-
-  EXPECT_CALL(*notification, onTransactions(initial_round, collection))
-      .Times(1);
-
-  ordering_gate->propagateTransaction(tx);
-}
 
 /**
  * @given initialized ordering gate
@@ -83,9 +63,63 @@ TEST_F(OnDemandOrderingGateTest, propagateBatch) {
 /**
  * @given initialized ordering gate
  * @when a block round event with height is received from the PCS
+ * AND a proposal is successfully retrieved from the network
  * @then new proposal round based on the received height is initiated
  */
 TEST_F(OnDemandOrderingGateTest, BlockEvent) {
+  OnDemandOrderingGate::BlockEvent event{3};
+  RoundType round{event.height, 1};
+
+  boost::optional<OdOsNotification::ProposalType> oproposal(nullptr);
+  auto proposal = oproposal.value().get();
+
+  EXPECT_CALL(*ordering_service, onCollaborationOutcome(round)).Times(1);
+  EXPECT_CALL(*notification, onRequestProposal(round))
+      .WillOnce(Return(ByMove(std::move(oproposal))));
+  EXPECT_CALL(*factory, unsafeCreateProposal(_, _, _)).Times(0);
+
+  auto gate_wrapper =
+      make_test_subscriber<CallExact>(ordering_gate->on_proposal(), 1);
+  gate_wrapper.subscribe([&](auto val) { ASSERT_EQ(val.get(), proposal); });
+
+  rounds.get_subscriber().on_next(event);
+
+  ASSERT_TRUE(gate_wrapper.validate());
+}
+
+/**
+ * @given initialized ordering gate
+ * @when an empty block round event is received from the PCS
+ * AND a proposal is successfully retrieved from the network
+ * @then new proposal round based on the received height is initiated
+ */
+TEST_F(OnDemandOrderingGateTest, EmptyEvent) {
+  RoundType round{initial_round.first, initial_round.second + 1};
+
+  boost::optional<OdOsNotification::ProposalType> oproposal(nullptr);
+  auto proposal = oproposal.value().get();
+
+  EXPECT_CALL(*ordering_service, onCollaborationOutcome(round)).Times(1);
+  EXPECT_CALL(*notification, onRequestProposal(round))
+      .WillOnce(Return(ByMove(std::move(oproposal))));
+  EXPECT_CALL(*factory, unsafeCreateProposal(_, _, _)).Times(0);
+
+  auto gate_wrapper =
+      make_test_subscriber<CallExact>(ordering_gate->on_proposal(), 1);
+  gate_wrapper.subscribe([&](auto val) { ASSERT_EQ(val.get(), proposal); });
+
+  rounds.get_subscriber().on_next(OnDemandOrderingGate::EmptyEvent{});
+
+  ASSERT_TRUE(gate_wrapper.validate());
+}
+
+/**
+ * @given initialized ordering gate
+ * @when a block round event with height is received from the PCS
+ * AND a proposal is not retrieved from the network
+ * @then new empty proposal round based on the received height is initiated
+ */
+TEST_F(OnDemandOrderingGateTest, BlockEventNoProposal) {
   OnDemandOrderingGate::BlockEvent event{3};
   RoundType round{event.height, 1};
 
@@ -94,20 +128,29 @@ TEST_F(OnDemandOrderingGateTest, BlockEvent) {
   EXPECT_CALL(*ordering_service, onCollaborationOutcome(round)).Times(1);
   EXPECT_CALL(*notification, onRequestProposal(round))
       .WillOnce(Return(ByMove(std::move(oproposal))));
-  EXPECT_CALL(*proposal_gate, doVote(Truly([&](ProposalVote &vote) {
-    return not vote.proposal and vote.round == round;
-  })))
-      .Times(1);
+
+  OdOsNotification::ProposalType uproposal;
+  auto proposal = uproposal.get();
+
+  EXPECT_CALL(*factory, unsafeCreateProposal(_, _, _))
+      .WillOnce(Return(ByMove(std::move(uproposal))));
+
+  auto gate_wrapper =
+      make_test_subscriber<CallExact>(ordering_gate->on_proposal(), 1);
+  gate_wrapper.subscribe([&](auto val) { ASSERT_EQ(val.get(), proposal); });
 
   rounds.get_subscriber().on_next(event);
+
+  ASSERT_TRUE(gate_wrapper.validate());
 }
 
 /**
  * @given initialized ordering gate
  * @when an empty block round event is received from the PCS
- * @then proposal reject round is initiated
+ * AND a proposal is not retrieved from the network
+ * @then new empty proposal round based on the received height is initiated
  */
-TEST_F(OnDemandOrderingGateTest, EmptyEvent) {
+TEST_F(OnDemandOrderingGateTest, EmptyEventNoProposal) {
   RoundType round{initial_round.first, initial_round.second + 1};
 
   boost::optional<OdOsNotification::ProposalType> oproposal;
@@ -115,95 +158,18 @@ TEST_F(OnDemandOrderingGateTest, EmptyEvent) {
   EXPECT_CALL(*ordering_service, onCollaborationOutcome(round)).Times(1);
   EXPECT_CALL(*notification, onRequestProposal(round))
       .WillOnce(Return(ByMove(std::move(oproposal))));
-  EXPECT_CALL(*proposal_gate, doVote(Truly([&](ProposalVote &vote) {
-    return not vote.proposal and vote.round == round;
-  })))
-      .Times(1);
 
-  rounds.get_subscriber().on_next(OnDemandOrderingGate::EmptyEvent{});
-}
+  OdOsNotification::ProposalType uproposal;
+  auto proposal = uproposal.get();
 
-/**
- * @given initialized ordering gate
- * @when a commit is received from consensus
- * @then no proposal round actions are done
- * AND proposal is emitted
- */
-TEST_F(OnDemandOrderingGateTest, ProposalCommit) {
-  ProposalCommit commit{std::shared_ptr<shared_model::interface::Proposal>{},
-                        initial_round};
-
-  EXPECT_CALL(*proposal_gate, outcomes())
-      .WillOnce(Return(outcomes.get_observable()));
-  EXPECT_CALL(*ordering_service, onCollaborationOutcome(_)).Times(0);
-  EXPECT_CALL(*notification, onRequestProposal(_)).Times(0);
-  EXPECT_CALL(*proposal_gate, doVote(_)).Times(0);
+  EXPECT_CALL(*factory, unsafeCreateProposal(_, _, _))
+      .WillOnce(Return(ByMove(std::move(uproposal))));
 
   auto gate_wrapper =
       make_test_subscriber<CallExact>(ordering_gate->on_proposal(), 1);
-  gate_wrapper.subscribe(
-      [&](auto proposal) { ASSERT_EQ(proposal, commit.proposal); });
+  gate_wrapper.subscribe([&](auto val) { ASSERT_EQ(val.get(), proposal); });
 
-  outcomes.get_subscriber().on_next(commit);
-  ASSERT_TRUE(gate_wrapper.validate());
-}
+  rounds.get_subscriber().on_next(OnDemandOrderingGate::EmptyEvent{});
 
-/**
- * @given initialized ordering gate
- * @when an empty commit is received from consensus
- * @then proposal reject round is initiated
- * AND no proposal is emitted
- */
-TEST_F(OnDemandOrderingGateTest, ProposalCommitEmpty) {
-  ProposalCommit commit{boost::none, initial_round};
-  RoundType round{initial_round.first, initial_round.second + 1};
-
-  boost::optional<OdOsNotification::ProposalType> oproposal;
-
-  EXPECT_CALL(*proposal_gate, outcomes())
-      .WillOnce(Return(outcomes.get_observable()));
-  EXPECT_CALL(*ordering_service, onCollaborationOutcome(round)).Times(1);
-  EXPECT_CALL(*notification, onRequestProposal(round))
-      .WillOnce(Return(ByMove(std::move(oproposal))));
-  EXPECT_CALL(*proposal_gate, doVote(Truly([&](ProposalVote &vote) {
-    return not vote.proposal and vote.round == round;
-  })))
-      .Times(1);
-
-  auto gate_wrapper =
-      make_test_subscriber<CallExact>(ordering_gate->on_proposal(), 0);
-  gate_wrapper.subscribe();
-
-  outcomes.get_subscriber().on_next(commit);
-  ASSERT_TRUE(gate_wrapper.validate());
-}
-
-/**
- * @given initialized ordering gate
- * @when a reject is received from consensus
- * @then proposal reject round is initiated
- * AND no proposal is emitted
- */
-TEST_F(OnDemandOrderingGateTest, ProposalReject) {
-  ProposalReject reject{initial_round};
-  RoundType round{initial_round.first, initial_round.second + 1};
-
-  boost::optional<OdOsNotification::ProposalType> oproposal;
-
-  EXPECT_CALL(*proposal_gate, outcomes())
-      .WillOnce(Return(outcomes.get_observable()));
-  EXPECT_CALL(*ordering_service, onCollaborationOutcome(round)).Times(1);
-  EXPECT_CALL(*notification, onRequestProposal(round))
-      .WillOnce(Return(ByMove(std::move(oproposal))));
-  EXPECT_CALL(*proposal_gate, doVote(Truly([&](ProposalVote &vote) {
-    return not vote.proposal and vote.round == round;
-  })))
-      .Times(1);
-
-  auto gate_wrapper =
-      make_test_subscriber<CallExact>(ordering_gate->on_proposal(), 0);
-  gate_wrapper.subscribe();
-
-  outcomes.get_subscriber().on_next(reject);
   ASSERT_TRUE(gate_wrapper.validate());
 }

@@ -12,6 +12,7 @@
 
 #include <rxcpp/rx-observable.hpp>
 #include "interfaces/common_objects/types.hpp"
+#include "interfaces/iroha_internal/unsafe_proposal_factory.hpp"
 #include "network/proposal_gate.hpp"
 #include "ordering/on_demand_ordering_service.hpp"
 
@@ -41,11 +42,9 @@ namespace iroha {
       OnDemandOrderingGate(
           std::shared_ptr<OnDemandOrderingService> ordering_service,
           std::shared_ptr<transport::OdOsNotification> network_client,
-          std::shared_ptr<network::ProposalGate> proposal_gate,
-          std::function<shared_model::interface::TransactionBatch(
-              std::shared_ptr<const shared_model::interface::Transaction>)>
-              batch_factory,
           rxcpp::observable<BlockRoundEventType> events,
+          std::unique_ptr<shared_model::interface::UnsafeProposalFactory>
+              factory,
           transport::RoundType initial_round);
 
       void propagateTransaction(
@@ -68,13 +67,14 @@ namespace iroha {
 
       std::shared_ptr<OnDemandOrderingService> ordering_service_;
       std::shared_ptr<transport::OdOsNotification> network_client_;
-      std::shared_ptr<network::ProposalGate> proposal_gate_;
-      std::function<shared_model::interface::TransactionBatch(
-          std::shared_ptr<const shared_model::interface::Transaction>)>
-          batch_factory_;
-      rxcpp::composite_subscription subscription_;
+      rxcpp::composite_subscription events_subscription_;
+      std::unique_ptr<shared_model::interface::UnsafeProposalFactory>
+          proposal_factory_;
 
       transport::RoundType current_round_;
+      rxcpp::subjects::subject<
+          std::shared_ptr<shared_model::interface::Proposal>>
+          proposal_notifier_;
       mutable std::shared_timed_mutex mutex_;
     };
 

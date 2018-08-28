@@ -10,6 +10,7 @@
 #include "interfaces/common_objects/peer.hpp"
 #include "interfaces/iroha_internal/block.hpp"
 #include "interfaces/iroha_internal/proposal.hpp"
+#include "interfaces/iroha_internal/unsafe_proposal_factory.hpp"
 #include "interfaces/transaction.hpp"
 
 namespace iface = shared_model::interface;
@@ -67,6 +68,14 @@ struct MockPeer : public iface::Peer {
   MOCK_CONST_METHOD0(address, const iface::types::AddressType &());
   MOCK_CONST_METHOD0(pubkey, const iface::types::PubkeyType &());
   MOCK_CONST_METHOD0(clone, MockPeer *());
+};
+
+struct MockUnsafeProposalFactory : public iface::UnsafeProposalFactory {
+  MOCK_METHOD3(unsafeCreateProposal,
+               std::unique_ptr<iface::Proposal>(
+                   iface::types::HeightType,
+                   iface::types::TimestampType,
+                   const iface::types::TransactionsCollectionType &));
 };
 
 #endif  // IROHA_INTERFACE_MOCKS_HPP
