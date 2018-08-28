@@ -32,6 +32,8 @@
 #include "builders/protobuf/queries.hpp"
 #include "builders/protobuf/transaction.hpp"
 
+#include "synchronizer/synchronizer_common.hpp"
+
 using ::testing::_;
 using ::testing::A;
 using ::testing::AtLeast;
@@ -40,6 +42,7 @@ using ::testing::Return;
 using namespace iroha::ametsuchi;
 using namespace iroha::network;
 using namespace iroha::validation;
+using namespace iroha::synchronizer;
 using namespace shared_model::proto;
 
 using namespace std::chrono_literals;
@@ -73,7 +76,7 @@ class ClientServerTest : public testing::Test {
 
     rxcpp::subjects::subject<std::shared_ptr<shared_model::interface::Proposal>>
         prop_notifier;
-    rxcpp::subjects::subject<iroha::Commit> commit_notifier;
+    rxcpp::subjects::subject<SynchronizationEvent> commit_notifier;
     EXPECT_CALL(*pcsMock, on_proposal())
         .WillRepeatedly(Return(prop_notifier.get_observable()));
     EXPECT_CALL(*pcsMock, on_commit())
@@ -81,9 +84,9 @@ class ClientServerTest : public testing::Test {
     EXPECT_CALL(*pcsMock, on_verified_proposal())
         .WillRepeatedly(Return(verified_prop_notifier.get_observable()));
 
-    EXPECT_CALL(*mst, onPreparedTransactionsImpl())
+    EXPECT_CALL(*mst, onPreparedBatchesImpl())
         .WillRepeatedly(Return(mst_prepared_notifier.get_observable()));
-    EXPECT_CALL(*mst, onExpiredTransactionsImpl())
+    EXPECT_CALL(*mst, onExpiredBatchesImpl())
         .WillRepeatedly(Return(mst_expired_notifier.get_observable()));
 
     auto status_bus = std::make_shared<iroha::torii::StatusBusImpl>();
@@ -146,7 +149,7 @@ class ClientServerTest : public testing::Test {
 
 TEST_F(ClientServerTest, SendTxWhenValid) {
   iroha_cli::CliClient client(ip, port);
-  EXPECT_CALL(*pcsMock, propagate_transaction(_)).Times(1);
+  EXPECT_CALL(*pcsMock, propagate_batch(_)).Times(1);
 
   auto shm_tx = shared_model::proto::TransactionBuilder()
                     .creatorAccountId("some@account")
@@ -225,7 +228,7 @@ TEST_F(ClientServerTest, SendTxWhenStatelessInvalid) {
  */
 TEST_F(ClientServerTest, SendTxWhenStatefulInvalid) {
   iroha_cli::CliClient client(ip, port);
-  EXPECT_CALL(*pcsMock, propagate_transaction(_)).Times(1);
+  EXPECT_CALL(*pcsMock, propagate_batch(_)).Times(1);
 
   // creating stateful invalid tx
   auto tx = TransactionBuilder()
