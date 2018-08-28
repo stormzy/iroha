@@ -4,10 +4,10 @@
 #
 
 add_subdirectory(logger)
+add_subdirectory(parser)
 
 if (NOT USE_LIBIROHA)
     add_subdirectory(common)
     add_subdirectory(crypto)
     add_subdirectory(generator)
-    add_subdirectory(parser)
 endif()

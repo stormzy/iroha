@@ -1,17 +1,11 @@
 find_package(PackageHandleStandardArgs)
 
-if (USE_LIBIROHA)
-  find_package(libiroha)
-endif()
-
 include(ExternalProject)
 
-if (NOT USE_LIBIROHA)
-  set(EP_PREFIX "${PROJECT_SOURCE_DIR}/external")
-  set_directory_properties(PROPERTIES
-      EP_PREFIX ${EP_PREFIX}
-      )
-endif()
+set(EP_PREFIX "${PROJECT_SOURCE_DIR}/external")
+set_directory_properties(PROPERTIES
+    EP_PREFIX ${EP_PREFIX}
+    )
 
 # Project dependencies.
 find_package(Threads REQUIRED)
@@ -105,3 +99,7 @@ endif()
 #          ed25519/sha3           #
 ###################################
 find_package(ed25519)
+
+if (USE_LIBIROHA)
+  find_package(libiroha)
+endif()
