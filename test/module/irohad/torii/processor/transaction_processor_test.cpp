@@ -185,7 +185,7 @@ TEST_F(TransactionProcessorTest, TransactionProcessorOnProposalBatchTest) {
       framework::batch::createValidBatch(proposal_size).transactions();
 
   EXPECT_CALL(*status_bus, publish(_))
-      .Times(proposal_size)
+      .Times(proposal_size * 2)
       .WillRepeatedly(testing::Invoke([this](auto response) {
         status_map[response->transactionHash()] = response;
       }));

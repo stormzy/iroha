@@ -109,17 +109,15 @@ namespace iroha {
         log_->info("MST batch prepared");
         // TODO: 07/08/2018 @muratovv rework interface of pcs::propagate batch
         // and mst::propagate batch IR-1584
+        for (const auto &tx : batch->transactions()) {
+          publishStatus(TxStatusType::kEnoughSignaturesCollected, tx->hash());
+        }
         this->pcs_->propagate_batch(*batch);
       });
       mst_processor_->onExpiredBatches().subscribe([this](auto &&batch) {
         log_->info("MST batch {} is expired", batch->reducedHash().toString());
-        std::lock_guard<std::mutex> lock(notifier_mutex_);
         for (auto &&tx : batch->transactions()) {
-          this->status_bus_->publish(
-              shared_model::builder::DefaultTransactionStatusBuilder()
-                  .mstExpired()
-                  .txHash(tx->hash())
-                  .build());
+          publishStatus(TxStatusType::kMstExpired, tx->hash());
         }
       });
     }
@@ -128,10 +126,16 @@ namespace iroha {
         const shared_model::interface::TransactionBatch &transaction_batch)
         const {
       if (transaction_batch.hasAllSignatures()) {
+        for (const auto &tx : transaction_batch.transactions()) {
+          publishStatus(TxStatusType::kEnoughSignaturesCollected, tx->hash());
+        }
         pcs_->propagate_batch(transaction_batch);
       } else {
         // TODO: 07/08/2018 @muratovv rework interface of pcs::propagate batch
         // and mst::propagate batch IR-1584
+        for (const auto &tx : transaction_batch.transactions()) {
+          publishStatus(TxStatusType::kMstPending, tx->hash());
+        }
         mst_processor_->propagateBatch(
             std::make_shared<shared_model::interface::TransactionBatch>(
                 transaction_batch));
