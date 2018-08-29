@@ -44,7 +44,7 @@ namespace shared_model {
       template <typename T>
       using Lazy = detail::LazyInitializer<T>;
 
-      const iroha::protocol::SetAccountQuorum &set_quorum_;
+      const iroha::protocol::SetAccountQuorum &set_account_quorum_;
     };
 
   }  // namespace proto

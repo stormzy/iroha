@@ -572,7 +572,7 @@ namespace iroha {
         if (instanceof <model::RemoveSignatory>(command)) {
           auto serialized = commandFactory.serializeRemoveSignatory(
               static_cast<const model::RemoveSignatory &>(command));
-          cmd.set_allocated_remove_sign(
+          cmd.set_allocated_remove_signatory(
               new protocol::RemoveSignatory(serialized));
         }
 
@@ -580,7 +580,7 @@ namespace iroha {
         if (instanceof <model::SetQuorum>(command)) {
           auto serialized = commandFactory.serializeSetQuorum(
               static_cast<const model::SetQuorum &>(command));
-          cmd.set_allocated_set_quorum(
+          cmd.set_allocated_set_account_quorum(
               new protocol::SetAccountQuorum(serialized));
         }
 
@@ -694,15 +694,15 @@ namespace iroha {
         }
 
         // -----|RemoveSignatory|-----
-        if (command.has_remove_sign()) {
-          auto pb_command = command.remove_sign();
+        if (command.has_remove_signatory()) {
+          auto pb_command = command.remove_signatory();
           auto cmd = commandFactory.deserializeRemoveSignatory(pb_command);
           val = std::make_shared<model::RemoveSignatory>(cmd);
         }
 
         // -----|SetAccountQuorum|-----
-        if (command.has_set_quorum()) {
-          auto pb_command = command.set_quorum();
+        if (command.has_set_account_quorum()) {
+          auto pb_command = command.set_account_quorum();
           auto cmd = commandFactory.deserializeSetQuorum(pb_command);
           val = std::make_shared<model::SetQuorum>(cmd);
         }

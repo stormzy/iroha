@@ -170,7 +170,7 @@ namespace shared_model {
           const interface::types::AccountIdType &account_id,
           const interface::types::PubkeyType &public_key) const {
         return addCommand([&](auto proto_command) {
-          auto command = proto_command->mutable_remove_sign();
+          auto command = proto_command->mutable_remove_signatory();
           command->set_account_id(account_id);
           command->set_public_key(crypto::toBinaryString(public_key));
         });
@@ -275,7 +275,7 @@ namespace shared_model {
       auto setAccountQuorum(const interface::types::AddressType &account_id,
                             interface::types::QuorumType quorum) const {
         return addCommand([&](auto proto_command) {
-          auto command = proto_command->mutable_set_quorum();
+          auto command = proto_command->mutable_set_account_quorum();
           command->set_account_id(account_id);
           command->set_quorum(quorum);
         });

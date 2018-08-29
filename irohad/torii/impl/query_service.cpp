@@ -135,7 +135,7 @@ namespace torii {
             [this, writer](const auto &error) {
               log_->debug("Stateless invalid: {}", error.error);
               iroha::protocol::BlockQueryResponse response;
-              response.mutable_error_response()->set_message(
+              response.mutable_block_error_response()->set_message(
                   std::move(error.error));
               writer->WriteLast(response, grpc::WriteOptions());
             });
