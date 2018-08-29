@@ -11,34 +11,32 @@
 namespace shared_model {
   namespace interface {
 
-    namespace {
-      /**
-       * check if all transactions belong to the same batch
-       * @param txs transactions to be checked
-       * @return true if all transactions from the same batch and false
-       * otherwise
-       */
-      bool allTxsInSameBatch(const types::SharedTxsCollectionType &txs) {
-        if (txs.size() == 1) {
-          return true;
-        }
+    /**
+     * Check if all transactions belong to the same batch
+     * @param txs transactions to be checked
+     * @return true if all transactions from the same batch and false
+     * otherwise
+     */
+    inline bool allTxsInSameBatch(const types::SharedTxsCollectionType &txs) {
+      if (txs.size() == 1) {
+        return true;
+      }
 
-        // take batch meta of the first transaction and compare it with batch
-        // metas of remaining transactions
-        auto batch_meta = txs.front()->batchMeta();
-        if (not batch_meta) {
-          return false;
-        }
+      // take batch meta of the first transaction and compare it with batch
+      // metas of remaining transactions
+      auto batch_meta = txs.front()->batchMeta();
+      if (not batch_meta) {
+        return false;
+      }
 
-        return std::all_of(++txs.begin(),
-                            txs.end(),
-                            [front_batch_meta = batch_meta.value()](
-                                const std::shared_ptr<Transaction> tx) {
-                              return tx->batchMeta()
-                                  and **tx->batchMeta() == *front_batch_meta;
-                            });
-      };
-    }  // namespace
+      return std::all_of(
+          ++txs.begin(),
+          txs.end(),
+          [front_batch_meta =
+               batch_meta.value()](const std::shared_ptr<Transaction> tx) {
+            return tx->batchMeta() and **tx->batchMeta() == *front_batch_meta;
+          });
+    }
 
     template <typename TransactionValidator, typename FieldValidator>
     iroha::expected::Result<TransactionBatch, std::string>
