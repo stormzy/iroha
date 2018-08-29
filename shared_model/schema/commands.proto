@@ -30,7 +30,7 @@ message CreateAsset {
 message CreateAccount {
     string account_name = 1;
     string domain_id = 2;
-    bytes main_pubkey = 3;
+    bytes public_key = 3;
 }
 
 message SetAccountDetail{

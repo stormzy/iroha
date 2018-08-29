@@ -192,7 +192,7 @@ namespace shared_model {
           auto command = proto_command->mutable_create_account();
           command->set_account_name(account_name);
           command->set_domain_id(domain_id);
-          command->set_main_pubkey(crypto::toBinaryString(main_pubkey));
+          command->set_public_key(crypto::toBinaryString(main_pubkey));
         });
       }
 

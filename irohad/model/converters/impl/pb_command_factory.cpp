@@ -245,8 +245,8 @@ namespace iroha {
         protocol::CreateAccount pb_create_account;
         pb_create_account.set_account_name(create_account.account_name);
         pb_create_account.set_domain_id(create_account.domain_id);
-        pb_create_account.set_main_pubkey(create_account.pubkey.data(),
-                                          create_account.pubkey.size());
+        pb_create_account.set_public_key(create_account.pubkey.data(),
+                                     create_account.pubkey.size());
         return pb_create_account;
       }
       model::CreateAccount PbCommandFactory::deserializeCreateAccount(
@@ -254,8 +254,8 @@ namespace iroha {
         model::CreateAccount create_account;
         create_account.account_name = pb_create_account.account_name();
         create_account.domain_id = pb_create_account.domain_id();
-        std::copy(pb_create_account.main_pubkey().begin(),
-                  pb_create_account.main_pubkey().end(),
+        std::copy(pb_create_account.public_key().begin(),
+                  pb_create_account.public_key().end(),
                   create_account.pubkey.begin());
         return create_account;
       }
