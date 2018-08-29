@@ -14,6 +14,7 @@ namespace shared_model {
      */
     class MstPendingResponse : public AbstractTxResponse<MstPendingResponse> {
      private:
+      // TODO: [IR-1666] Akvinikym 29.08.18: Make interface methods public
       std::string className() const override {
         return "MstPendingResponse";
       }

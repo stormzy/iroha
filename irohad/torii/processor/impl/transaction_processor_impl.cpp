@@ -18,23 +18,25 @@ namespace iroha {
 
     using network::PeerCommunicationService;
 
-    static std::string composeErrorMessage(
-        const validation::TransactionError &tx_error) {
-      if (not tx_error.first.tx_passed_initial_validation) {
-        return (boost::format("Stateful validation error: transaction %s "
-                              "did not pass initial verification: "
-                              "checking '%s', error message '%s'")
+    namespace {
+      std::string composeErrorMessage(
+          const validation::TransactionError &tx_error) {
+        if (not tx_error.first.tx_passed_initial_validation) {
+          return (boost::format("Stateful validation error: transaction %s "
+                                "did not pass initial verification: "
+                                "checking '%s', error message '%s'")
+                  % tx_error.second.hex() % tx_error.first.name
+                  % tx_error.first.error)
+              .str();
+        }
+        return (boost::format("Stateful validation error in transaction %s: "
+                              "command '%s' with index '%d' did not pass "
+                              "verification with error '%s'")
                 % tx_error.second.hex() % tx_error.first.name
-                % tx_error.first.error)
+                % tx_error.first.index % tx_error.first.error)
             .str();
       }
-      return (boost::format("Stateful validation error in transaction %s: "
-                            "command '%s' with index '%d' did not pass "
-                            "verification with error '%s'")
-              % tx_error.second.hex() % tx_error.first.name
-              % tx_error.first.index % tx_error.first.error)
-          .str();
-    }
+    }  // namespace
 
     TransactionProcessorImpl::TransactionProcessorImpl(
         std::shared_ptr<PeerCommunicationService> pcs,
@@ -49,13 +51,7 @@ namespace iroha {
         for (const auto &tx : model_proposal->transactions()) {
           const auto &hash = tx.hash();
           log_->info("on proposal stateless success: {}", hash.hex());
-          // different on_next() calls (this one and below) can happen in
-          // different threads and we don't expect emitting them concurrently
-          status_bus_->publish(
-              shared_model::builder::DefaultTransactionStatusBuilder()
-                  .statelessValidationSuccess()
-                  .txHash(hash)
-                  .build());
+          publishStatus(TxStatusType::kStatelessValid, hash);
         }
       });
 
@@ -69,73 +65,54 @@ namespace iroha {
             for (const auto &tx_error : errors) {
               auto error_msg = composeErrorMessage(tx_error);
               log_->info(error_msg);
-              status_bus_->publish(
-                  shared_model::builder::DefaultTransactionStatusBuilder()
-                      .statefulValidationFailed()
-                      .txHash(tx_error.second)
-                      .errorMsg(error_msg)
-                      .build());
+              publishStatus(
+                  TxStatusType::kStatefulFailed, tx_error.second, error_msg);
             }
             // notify about success txs
             for (const auto &successful_tx :
                  proposal_and_errors->first->transactions()) {
               log_->info("on stateful validation success: {}",
                          successful_tx.hash().hex());
-              status_bus_->publish(
-                  shared_model::builder::DefaultTransactionStatusBuilder()
-                      .statefulValidationSuccess()
-                      .txHash(successful_tx.hash())
-                      .build());
+              publishStatus(TxStatusType::kStatefulValid, successful_tx.hash());
             }
           });
 
       // commit transactions
-      pcs_->on_commit().subscribe([this](synchronizer::SynchronizationEvent
-                                             sync_event) {
-        sync_event.synced_blocks.subscribe(
-            // on next
-            [this](auto model_block) {
-              current_txs_hashes_.reserve(model_block->transactions().size());
-              std::transform(model_block->transactions().begin(),
-                             model_block->transactions().end(),
-                             std::back_inserter(current_txs_hashes_),
-                             [](const auto &tx) { return tx.hash(); });
-            },
-            // on complete
-            [this] {
-              if (current_txs_hashes_.empty()) {
-                log_->info("there are no transactions to be committed");
-              } else {
-                std::lock_guard<std::mutex> lock(notifier_mutex_);
-                for (const auto &tx_hash : current_txs_hashes_) {
-                  log_->info("on commit committed: {}", tx_hash.hex());
-                  status_bus_->publish(
-                      shared_model::builder::DefaultTransactionStatusBuilder()
-                          .committed()
-                          .txHash(tx_hash)
-                          .build());
-                }
-                current_txs_hashes_.clear();
-              }
-            });
-      });
+      pcs_->on_commit().subscribe(
+          [this](synchronizer::SynchronizationEvent sync_event) {
+            sync_event.synced_blocks.subscribe(
+                // on next
+                [this](auto model_block) {
+                  current_txs_hashes_.reserve(
+                      model_block->transactions().size());
+                  std::transform(model_block->transactions().begin(),
+                                 model_block->transactions().end(),
+                                 std::back_inserter(current_txs_hashes_),
+                                 [](const auto &tx) { return tx.hash(); });
+                },
+                // on complete
+                [this] {
+                  if (current_txs_hashes_.empty()) {
+                    log_->info("there are no transactions to be committed");
+                  } else {
+                    std::lock_guard<std::mutex> lock(notifier_mutex_);
+                    for (const auto &tx_hash : current_txs_hashes_) {
+                      log_->info("on commit committed: {}", tx_hash.hex());
+                      publishStatus(TxStatusType::kCommitted, tx_hash);
+                    }
+                    current_txs_hashes_.clear();
+                  }
+                });
+          });
 
       mst_processor_->onPreparedTransactions().subscribe([this](auto &&tx) {
         log_->info("MST tx prepared");
-        this->status_bus_->publish(
-            shared_model::builder::DefaultTransactionStatusBuilder()
-                .statelessValidationSuccess()
-                .txHash(tx->hash())
-                .build());
+        publishStatus(TxStatusType::kStatelessValid, tx->hash());
         return this->pcs_->propagate_transaction(tx);
       });
       mst_processor_->onExpiredTransactions().subscribe([this](auto &&tx) {
         log_->info("MST tx expired");
-        this->status_bus_->publish(
-            shared_model::builder::DefaultTransactionStatusBuilder()
-                .mstExpired()
-                .txHash(tx->hash())
-                .build());
+        publishStatus(TxStatusType::kMstExpired, tx->hash());
       });
     }
 
@@ -146,19 +123,12 @@ namespace iroha {
       if (boost::size(transaction->signatures()) < transaction->quorum()) {
         log_->info("waiting for quorum signatures");
         mst_processor_->propagateTransaction(transaction);
-        status_bus_->publish(
-            shared_model::builder::DefaultTransactionStatusBuilder()
-                .mstPending()
-                .txHash(transaction->hash())
-                .build());
+        publishStatus(TxStatusType::kMstPending, transaction->hash());
         return;
       }
       log_->info("propagating tx");
-      status_bus_->publish(
-          shared_model::builder::DefaultTransactionStatusBuilder()
-              .enoughSignaturesCollected()
-              .txHash(transaction->hash())
-              .build());
+      publishStatus(TxStatusType::kEnoughSignaturesCollected,
+                    transaction->hash());
       pcs_->propagate_transaction(transaction);
     }
 
@@ -176,5 +146,54 @@ namespace iroha {
       }
     }
 
+    void TransactionProcessorImpl::publishStatus(
+        TxStatusType tx_status,
+        const shared_model::crypto::Hash &hash,
+        const std::string &error) const {
+      auto builder =
+          shared_model::builder::DefaultTransactionStatusBuilder().txHash(hash);
+      if (not error.empty()) {
+        builder = builder.errorMsg(error);
+      }
+      switch (tx_status) {
+        case TxStatusType::kStatelessFailed: {
+          builder = builder.statelessValidationFailed();
+          break;
+        };
+        case TxStatusType::kStatelessValid: {
+          builder = builder.statelessValidationSuccess();
+          break;
+        };
+        case TxStatusType::kStatefulFailed: {
+          builder = builder.statefulValidationFailed();
+          break;
+        };
+        case TxStatusType::kStatefulValid: {
+          builder = builder.statefulValidationSuccess();
+          break;
+        };
+        case TxStatusType::kCommitted: {
+          builder = builder.committed();
+          break;
+        };
+        case TxStatusType::kMstExpired: {
+          builder = builder.mstExpired();
+          break;
+        };
+        case TxStatusType::kNotReceived: {
+          builder = builder.notReceived();
+          break;
+        };
+        case TxStatusType::kMstPending: {
+          builder = builder.mstPending();
+          break;
+        };
+        case TxStatusType::kEnoughSignaturesCollected: {
+          builder = builder.enoughSignaturesCollected();
+          break;
+        };
+      }
+      status_bus_->publish(builder.build());
+    }
   }  // namespace torii
 }  // namespace iroha

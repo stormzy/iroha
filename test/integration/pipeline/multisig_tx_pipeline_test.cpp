@@ -112,18 +112,18 @@ TEST_F(MstPipelineTest, OnePeerSendsTest) {
         ASSERT_NO_THROW(boost::apply_visitor(
             SpecifiedVisitor<interface::MstPendingResponse>(), resp.get()));
       };
-//  auto checkEnoughSignaturesCollectedStatus =
-//      [](const shared_model::proto::TransactionResponse &resp) {
-//        ASSERT_NO_THROW(boost::apply_visitor(
-//            SpecifiedVisitor<interface::MstPendingResponse>(), resp.get()));
-//      };
+  auto checkEnoughSignaturesCollectedStatus =
+      [](const shared_model::proto::TransactionResponse &resp) {
+        ASSERT_NO_THROW(boost::apply_visitor(
+            SpecifiedVisitor<interface::MstPendingResponse>(), resp.get()));
+      };
 
   IntegrationTestFramework itf(1, {}, [](auto &i) { i.done(); }, true);
   itf.setInitialState(kAdminKeypair);
   auto &mst_itf = makeMstUser(itf);
   mst_itf.sendTx(signTx(tx, kUserKeypair), checkMstPendingTxStatus)
       .sendTx(signTx(tx, signatories[0]), checkMstPendingTxStatus)
-      .sendTx(signTx(tx, signatories[1]))
+      .sendTx(signTx(tx, signatories[1]), checkEnoughSignaturesCollectedStatus)
       .skipProposal()
       .skipVerifiedProposal()
       .checkBlock([](auto &proposal) {

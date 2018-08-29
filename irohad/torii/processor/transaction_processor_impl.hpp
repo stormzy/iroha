@@ -71,6 +71,31 @@ namespace iroha {
       /// prevents from emitting new tx statuses from different threads
       /// in parallel
       std::mutex notifier_mutex_;
+
+      // TODO: [IR-1665] Akvinikym 29.08.18: Refactor method publishStatus(..)
+      /**
+       * Complementary class for publishStatus method
+       */
+      enum class TxStatusType {
+        kStatelessFailed,
+        kStatelessValid,
+        kStatefulFailed,
+        kStatefulValid,
+        kCommitted,
+        kMstExpired,
+        kNotReceived,
+        kMstPending,
+        kEnoughSignaturesCollected
+      };
+      /**
+       * Publish status of transaction
+       * @param tx_status to be published
+       * @param hash of that transaction
+       * @param error, which can appear during validation
+       */
+      void publishStatus(TxStatusType tx_status,
+                         const shared_model::crypto::Hash &hash,
+                         const std::string &error = "") const;
     };
   }  // namespace torii
 }  // namespace iroha

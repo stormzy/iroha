@@ -111,7 +111,8 @@ namespace shared_model {
           [this] { return crypto::Hash(this->proto_->tx_hash()); }};
 
       /**
-       * @return priority this transaction response
+       * @return priority of this transaction response; transaction response can
+       * only be replaced with one with higher priority
        */
       int priority() const noexcept {
         return iroha::visit_in_place(
