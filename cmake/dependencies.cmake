@@ -74,18 +74,17 @@ find_package(Boost 1.65.0 REQUIRED
     system
     thread
     )
-if (NOT TARGET boost)
-  add_library(boost INTERFACE IMPORTED)
-  set_target_properties(boost PROPERTIES
-      INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIRS}
-      INTERFACE_LINK_LIBRARIES "${Boost_LIBRARIES}"
-      )
 
-  if(ENABLE_LIBS_PACKAGING)
-    foreach (library ${Boost_LIBRARIES})
-      add_install_step_for_lib(${library})
-    endforeach(library)
-  endif()
+add_library(boost INTERFACE IMPORTED)
+set_target_properties(boost PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES ${Boost_INCLUDE_DIRS}
+    INTERFACE_LINK_LIBRARIES "${Boost_LIBRARIES}"
+    )
+
+if(ENABLE_LIBS_PACKAGING)
+  foreach (library ${Boost_LIBRARIES})
+    add_install_step_for_lib(${library})
+  endforeach(library)
 endif()
 
 ##########################
