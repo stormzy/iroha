@@ -135,7 +135,7 @@ namespace iroha {
         const auto &pb_sign = pb_query.signature();
 
         Signature sign{};
-        sign.pubkey = pubkey_t::from_string(pb_sign.pubkey());
+        sign.pubkey = pubkey_t::from_string(pb_sign.public_key());
         sign.signature = sig_t::from_string(pb_sign.signature());
 
         val->query_counter = pl.meta().query_counter();
@@ -154,7 +154,7 @@ namespace iroha {
         // Set signatures
         auto sig = pb_query.mutable_signature();
         sig->set_signature(query->signature.signature.to_string());
-        sig->set_pubkey(query->signature.pubkey.to_string());
+        sig->set_public_key(query->signature.pubkey.to_string());
       }
 
       boost::optional<protocol::Query> PbQueryFactory::serialize(
